@@ -33,6 +33,7 @@ export default function AdminLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [notifs, setNotifs] = useState([]);
+  const accent = user?.company?.accent_color || "#0f172a";
 
   useEffect(() => {
     const load = async () => {
@@ -54,12 +55,27 @@ export default function AdminLayout() {
   };
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
+    <div
+      className="min-h-screen flex bg-slate-50"
+      style={{ "--company-accent": accent }}
+    >
       {/* Sidebar */}
       <aside className="w-64 shrink-0 bg-slate-950 text-slate-200 flex flex-col" data-testid="admin-sidebar">
         <div className="px-5 py-5 border-b border-slate-800/80 flex items-center gap-2">
-          <div className="h-8 w-8 rounded-lg bg-white/10 grid place-items-center">
-            <Building2 className="h-4 w-4 text-white" strokeWidth={1.5} />
+          <div
+            className="h-9 w-9 rounded-lg grid place-items-center overflow-hidden"
+            style={{ background: user?.company?.accent_color || "rgba(255,255,255,0.1)" }}
+          >
+            {user?.company?.has_logo ? (
+              <img
+                src={`${process.env.REACT_APP_BACKEND_URL}/api/companies/${user.company.id}/logo`}
+                alt={user.company.name}
+                className="h-full w-full object-cover"
+                data-testid="sidebar-company-logo"
+              />
+            ) : (
+              <Building2 className="h-4 w-4 text-white" strokeWidth={1.5} />
+            )}
           </div>
           <div className="min-w-0">
             <div className="font-display text-base font-semibold text-white truncate">{user?.company?.name || "Workspace"}</div>

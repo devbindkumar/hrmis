@@ -22,6 +22,7 @@ export default function EmployeeLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [notifs, setNotifs] = useState([]);
+  const accent = user?.company?.accent_color || "#0f172a";
 
   useEffect(() => {
     const load = async () => {
@@ -42,12 +43,21 @@ export default function EmployeeLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50" style={{ "--company-accent": accent }}>
       <header className="bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link to="/employee" className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-slate-900 grid place-items-center">
-              <Briefcase className="h-4 w-4 text-white" strokeWidth={1.5} />
+            <div className="h-9 w-9 rounded-lg grid place-items-center overflow-hidden" style={{ background: accent }}>
+              {user?.company?.has_logo ? (
+                <img
+                  src={`${process.env.REACT_APP_BACKEND_URL}/api/companies/${user.company.id}/logo`}
+                  alt={user.company.name}
+                  className="h-full w-full object-cover"
+                  data-testid="emp-company-logo"
+                />
+              ) : (
+                <Briefcase className="h-4 w-4 text-white" strokeWidth={1.5} />
+              )}
             </div>
             <div className="min-w-0">
               <div className="font-display text-base font-semibold text-slate-900 leading-none truncate max-w-[180px]">{user?.company?.name || "My HR"}</div>

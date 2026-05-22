@@ -2,11 +2,13 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import Response
 from pydantic import BaseModel, EmailStr, Field
 
 from auth import get_current_user, require_roles, hash_password
 from db import get_db
+from storage import put_object, get_object, APP_NAME
 
 router = APIRouter(prefix="/api/companies", tags=["companies"])
 
@@ -15,6 +17,7 @@ class CompanyCreate(BaseModel):
     name: str = Field(min_length=2)
     slug: str = Field(min_length=2, pattern=r"^[a-z0-9-]+$")
     escalation_hours: int = 48
+    accent_color: str = Field(default="#0f172a", pattern=r"^#[0-9a-fA-F]{6}$")
     admin_email: EmailStr
     admin_name: str
     admin_password: str = Field(default="Admin@123", min_length=6)
@@ -23,6 +26,7 @@ class CompanyCreate(BaseModel):
 class CompanyUpdate(BaseModel):
     name: Optional[str] = None
     escalation_hours: Optional[int] = None
+    accent_color: Optional[str] = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     status: Optional[str] = None  # active | suspended
 
 
@@ -65,6 +69,8 @@ async def create_company(body: CompanyCreate, admin: dict = Depends(require_role
         "name": body.name,
         "slug": slug,
         "escalation_hours": max(body.escalation_hours, 1),
+        "accent_color": body.accent_color,
+        "logo_path": None,
         "status": "active",
         "created_at": now,
         "created_by": admin["id"],
@@ -143,3 +149,51 @@ async def my_company(user: dict = Depends(get_current_user)):
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return company
+
+
+
+@router.post("/{company_id}/logo")
+async def upload_logo(company_id: str, file: UploadFile = File(...), admin: dict = Depends(require_roles("super_admin", "hr"))):
+    """Upload a logo for a company. Returns the relative path stored on the company."""
+    if admin.get("role") != "super_admin" and admin.get("company_id") != company_id:
+        raise HTTPException(status_code=403, detail="You can only edit your own company")
+    allowed = {"image/png", "image/jpeg", "image/webp", "image/svg+xml"}
+    content_type = file.content_type or "application/octet-stream"
+    if content_type not in allowed:
+        raise HTTPException(status_code=400, detail="Logo must be PNG, JPG, WEBP or SVG")
+    data = await file.read()
+    if len(data) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Logo too large (2 MB max)")
+    ext = "png"
+    if content_type == "image/jpeg":
+        ext = "jpg"
+    elif content_type == "image/webp":
+        ext = "webp"
+    elif content_type == "image/svg+xml":
+        ext = "svg"
+    path = f"{APP_NAME}/logos/{company_id}-{uuid.uuid4()}.{ext}"
+    try:
+        result = put_object(path, data, content_type)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Storage unavailable: {e}")
+    db = get_db()
+    await db.companies.update_one({"id": company_id}, {"$set": {"logo_path": result["path"], "logo_content_type": content_type}})
+    return {"path": result["path"], "content_type": content_type}
+
+
+@router.get("/{company_id}/logo")
+async def serve_logo(company_id: str):
+    """Public endpoint that streams the company logo. No auth (logos are public-facing)."""
+    db = get_db()
+    company = await db.companies.find_one({"id": company_id}, {"_id": 0, "logo_path": 1, "logo_content_type": 1})
+    if not company or not company.get("logo_path"):
+        raise HTTPException(status_code=404, detail="No logo")
+    try:
+        data, content_type = get_object(company["logo_path"])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Couldn't fetch logo: {e}")
+    return Response(
+        content=data,
+        media_type=company.get("logo_content_type") or content_type,
+        headers={"Cache-Control": "public, max-age=300"},
+    )

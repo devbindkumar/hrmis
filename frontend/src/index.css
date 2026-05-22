@@ -97,14 +97,20 @@ h1, h2, h3, h4, h5, h6, .font-display {
     @apply flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800/60 hover:text-white transition-colors;
 }
 .nav-link.active {
-    @apply bg-slate-800 text-white;
+    background: var(--company-accent, theme('colors.slate.800'));
+    @apply text-white;
 }
 
 .emp-nav-link {
     @apply flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors;
 }
 .emp-nav-link.active {
-    @apply bg-slate-900 text-white hover:bg-slate-900 hover:text-white;
+    background: var(--company-accent, theme('colors.slate.900'));
+    @apply text-white;
+}
+.emp-nav-link.active:hover {
+    background: var(--company-accent, theme('colors.slate.900'));
+    @apply text-white;
 }
 
 /* Subtle grid background for empty hero sections */

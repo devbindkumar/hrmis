@@ -137,8 +137,9 @@ async def login(body: LoginBody):
     user_payload = _strip_user(user)
     # attach company info for convenience
     if user_payload.get("company_id"):
-        company = await db.companies.find_one({"id": user_payload["company_id"]}, {"_id": 0, "id": 1, "name": 1, "slug": 1})
+        company = await db.companies.find_one({"id": user_payload["company_id"]}, {"_id": 0, "id": 1, "name": 1, "slug": 1, "accent_color": 1, "logo_path": 1})
         if company:
+            company["has_logo"] = bool(company.pop("logo_path", None))
             user_payload["company"] = company
     return {
         "token": token,
@@ -150,8 +151,9 @@ async def login(body: LoginBody):
 async def me(user: dict = Depends(get_current_user)):
     db = get_db()
     if user.get("company_id"):
-        company = await db.companies.find_one({"id": user["company_id"]}, {"_id": 0, "id": 1, "name": 1, "slug": 1})
+        company = await db.companies.find_one({"id": user["company_id"]}, {"_id": 0, "id": 1, "name": 1, "slug": 1, "accent_color": 1, "logo_path": 1})
         if company:
+            company["has_logo"] = bool(company.pop("logo_path", None))
             user["company"] = company
     return user
 
