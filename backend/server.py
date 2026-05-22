@@ -25,6 +25,7 @@ from routes.dashboard import router as dashboard_router  # noqa: E402
 from routes.careers import public_router as careers_public_router, admin_router as jobs_admin_router  # noqa: E402
 from seed import ensure_indexes, seed_admin_and_demo  # noqa: E402
 from storage import init_storage  # noqa: E402
+from escalation import escalation_loop  # noqa: E402
 
 
 logging.basicConfig(
@@ -77,6 +78,9 @@ async def on_startup():
         await ensure_indexes()
         await seed_admin_and_demo()
         init_storage()
+        # Fire-and-forget background escalation loop
+        import asyncio  # local import to avoid top-level dep noise
+        asyncio.create_task(escalation_loop())
         logger.info("HRMIS startup: indexes + seed complete")
     except Exception as e:
         logger.error(f"Startup error: {e}")

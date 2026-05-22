@@ -30,6 +30,16 @@ function buildTree(employees) {
     nodes.forEach((n) => sortRec(n.children));
   };
   sortRec(roots);
+  // compute subtree size (total descendants)
+  const computeSize = (n) => {
+    let total = 0;
+    for (const c of n.children) {
+      total += 1 + computeSize(c);
+    }
+    n.subtree_size = total;
+    return total;
+  };
+  roots.forEach(computeSize);
   return roots;
 }
 
@@ -166,9 +176,16 @@ export default function OrgChart() {
                     <div className="text-xs text-slate-500 truncate">{node.designation} · {node.department}</div>
                   </div>
                   {hasChildren && (
-                    <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500 shrink-0">
-                      <Users2 className="h-3 w-3" strokeWidth={1.5} />
-                      {node.children.length} {node.children.length === 1 ? "report" : "reports"}
+                    <div className="hidden sm:flex items-center gap-3 text-xs text-slate-500 shrink-0">
+                      <span className="inline-flex items-center gap-1.5">
+                        <Users2 className="h-3 w-3" strokeWidth={1.5} />
+                        <b className="text-slate-900">{node.children.length}</b> direct
+                      </span>
+                      {node.subtree_size > node.children.length && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 border border-slate-100 text-slate-600">
+                          <b className="text-slate-900">{node.subtree_size}</b> in tree
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>

@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, UserCheck, House, CalendarDays, BellRing, ArrowUpRight, Sparkles } from "lucide-react";
+import { Users, UserCheck, House, CalendarDays, BellRing, ArrowUpRight, Sparkles, Users2 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from "recharts";
 import StatusPill from "@/components/StatusPill";
 import { Link } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const STATUS_COLORS = {
   present: "#10b981",
@@ -33,9 +34,11 @@ function KpiCard({ label, value, icon: Icon, accent, hint, testid }) {
 
 export default function AdminOverview() {
   const [data, setData] = useState(null);
+  const [team, setTeam] = useState([]);
 
   useEffect(() => {
     api.get("/dashboard/admin").then((r) => setData(r.data)).catch(() => setData({ kpi: {}, trend_7d: [], pending_leaves: [], pending_wfhs: [], department_counts: [] }));
+    api.get("/employees/team/today").then((r) => setTeam(r.data.reports || [])).catch(() => setTeam([]));
   }, []);
 
   if (!data) {
@@ -63,6 +66,36 @@ export default function AdminOverview() {
         <KpiCard testid="kpi-wfh" label="Working remote" value={kpi.wfh ?? 0} icon={House} accent="bg-blue-50 text-blue-700" hint="Approved WFH" />
         <KpiCard testid="kpi-leave" label="On leave" value={kpi.on_leave ?? 0} icon={CalendarDays} accent="bg-amber-50 text-amber-700" hint={`${kpi.pending_leave ?? 0} pending`} />
       </div>
+
+      {team.length > 0 && (
+        <div className="surface p-6 card-hover" data-testid="my-team-today">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-2">
+              <Users2 className="h-4 w-4 text-slate-500" strokeWidth={1.5} />
+              <h3 className="font-display text-lg font-medium text-slate-900">My team today</h3>
+              <span className="text-xs text-slate-500 ml-1">· {team.length} direct {team.length === 1 ? "report" : "reports"}</span>
+            </div>
+            <Link to="/admin/leave" className="text-xs font-medium text-blue-600 hover:underline">Review approvals →</Link>
+          </div>
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {team.map((m) => (
+              <div key={m.employee_id} className="rounded-xl border border-slate-100 hover:border-slate-200 p-3 flex items-center gap-3" data-testid={`team-member-${m.employee_id}`}>
+                <Avatar className="h-10 w-10">
+                  <AvatarImage src={m.avatar_url} alt={m.name} />
+                  <AvatarFallback className="text-xs bg-slate-100">{m.name.split(" ").map(p=>p[0]).slice(0,2).join("")}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-slate-900 truncate">{m.name}</span>
+                  </div>
+                  <div className="text-xs text-slate-500 truncate">{m.detail || m.designation}</div>
+                </div>
+                <StatusPill status={m.status} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="surface p-6 lg:col-span-8" data-testid="attendance-chart">

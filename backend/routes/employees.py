@@ -103,6 +103,77 @@ async def list_direct_reports(employee_id: str, user: dict = Depends(get_current
     return reports
 
 
+@router.get("/team/today")
+async def team_today(user: dict = Depends(get_current_user)):
+    """Today's status for each direct report of the calling user."""
+    from datetime import datetime as _dt, timezone as _tz
+    db = get_db()
+    # find caller's employee record
+    me = await db.employees.find_one({"user_id": user["id"]}, {"_id": 0, "id": 1})
+    if not me:
+        return {"reports": []}
+    reports = await db.employees.find(
+        {"manager_id": me["id"], "status": "active"},
+        {"_id": 0, "id": 1, "user_id": 1, "name": 1, "designation": 1, "avatar_url": 1, "department": 1},
+    ).sort("name", 1).to_list(500)
+    if not reports:
+        return {"reports": []}
+
+    today = _dt.now(_tz.utc).date().isoformat()
+    user_ids = [r["user_id"] for r in reports]
+    attendance = await db.attendance.find({"user_id": {"$in": user_ids}, "date": today}, {"_id": 0}).to_list(500)
+    a_map = {a["user_id"]: a for a in attendance}
+
+    on_leave = await db.leave_requests.find({
+        "user_id": {"$in": user_ids},
+        "status": "approved",
+        "start_date": {"$lte": today},
+        "end_date": {"$gte": today},
+    }, {"_id": 0, "user_id": 1, "leave_type": 1, "end_date": 1}).to_list(500)
+    leave_map = {l["user_id"]: l for l in on_leave}
+
+    wfh_today = await db.wfh_requests.find({
+        "user_id": {"$in": user_ids},
+        "status": "approved",
+        "date": today,
+    }, {"_id": 0, "user_id": 1}).to_list(500)
+    wfh_set = {w["user_id"] for w in wfh_today}
+
+    out = []
+    for r in reports:
+        uid = r["user_id"]
+        a = a_map.get(uid)
+        if uid in leave_map:
+            status = "on_leave"
+            detail = f"{leave_map[uid]['leave_type']} · until {leave_map[uid]['end_date']}"
+        elif uid in wfh_set:
+            status = a.get("current_status") if a else "remote"
+            if status not in ("remote", "in_meeting", "on_break"):
+                status = "remote"
+            detail = "Working from home"
+        elif a and a.get("check_in"):
+            cur = a.get("current_status") or "active"
+            # Normalise: anything not a known state collapses to "present"
+            valid = {"present", "active", "on_break", "in_meeting", "remote", "offline"}
+            if cur not in valid:
+                cur = "active"
+            status = "present" if cur == "active" else cur
+            detail = f"In at {a['check_in'][11:16]}" if a.get("check_in") else ""
+        else:
+            status = "absent"
+            detail = "Not checked in yet"
+        out.append({
+            "employee_id": r["id"],
+            "name": r["name"],
+            "avatar_url": r.get("avatar_url"),
+            "designation": r.get("designation"),
+            "department": r.get("department"),
+            "status": status,
+            "detail": detail,
+        })
+    return {"reports": out}
+
+
 
 @router.get("/me")
 async def my_employee(user: dict = Depends(get_current_user)):
