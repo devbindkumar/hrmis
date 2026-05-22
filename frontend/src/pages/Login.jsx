@@ -66,6 +66,12 @@ export default function Login() {
             <div><span className="text-white text-base font-display font-semibold">4</span>&nbsp; departments</div>
             <div><span className="text-white text-base font-display font-semibold">5</span>&nbsp; role tiers</div>
           </div>
+          <div className="mt-10 pt-6 border-t border-white/10">
+            <a href="/careers" className="inline-flex items-center gap-2 text-sm text-slate-200 hover:text-white" data-testid="careers-link-login">
+              <span className="px-2 py-0.5 rounded-md bg-white/10 text-[10px] uppercase tracking-widest font-semibold">We're hiring</span>
+              See open roles →
+            </a>
+          </div>
         </div>
       </div>
 

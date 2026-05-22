@@ -16,6 +16,7 @@ import AdminWFH from "@/pages/admin/WFH";
 import AdminAnnouncements from "@/pages/admin/Announcements";
 import AdminReports from "@/pages/admin/Reports";
 import AdminSettings from "@/pages/admin/Settings";
+import AdminJobs from "@/pages/admin/Jobs";
 
 import EmployeeToday from "@/pages/employee/Today";
 import MyLeave from "@/pages/employee/MyLeave";
@@ -25,6 +26,9 @@ import Profile from "@/pages/employee/Profile";
 import Chat from "@/pages/Chat";
 import Meetings from "@/pages/Meetings";
 
+import CareersHome from "@/pages/careers/CareersHome";
+import JobDetail from "@/pages/careers/JobDetail";
+
 function App() {
   return (
     <AuthProvider>
@@ -33,6 +37,10 @@ function App() {
         <Routes>
           <Route path="/" element={<RoleRedirect />} />
           <Route path="/login" element={<Login />} />
+
+          {/* Public careers */}
+          <Route path="/careers" element={<CareersHome />} />
+          <Route path="/careers/:id" element={<JobDetail />} />
 
           {/* Admin */}
           <Route
@@ -52,6 +60,7 @@ function App() {
             <Route path="chat" element={<Chat />} />
             <Route path="announcements" element={<AdminAnnouncements />} />
             <Route path="reports" element={<AdminReports />} />
+            <Route path="jobs" element={<AdminJobs />} />
             <Route path="settings" element={<AdminSettings />} />
           </Route>
 

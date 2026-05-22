@@ -22,6 +22,7 @@ from routes.chat import router as chat_router  # noqa: E402
 from routes.announcements import router as announcements_router  # noqa: E402
 from routes.notifications import router as notifications_router  # noqa: E402
 from routes.dashboard import router as dashboard_router  # noqa: E402
+from routes.careers import public_router as careers_public_router, admin_router as jobs_admin_router  # noqa: E402
 from seed import ensure_indexes, seed_admin_and_demo  # noqa: E402
 
 
@@ -65,6 +66,8 @@ app.include_router(chat_router)
 app.include_router(announcements_router)
 app.include_router(notifications_router)
 app.include_router(dashboard_router)
+app.include_router(careers_public_router)
+app.include_router(jobs_admin_router)
 
 
 @app.on_event("startup")

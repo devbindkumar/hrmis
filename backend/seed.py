@@ -16,6 +16,8 @@ async def ensure_indexes():
     await db.login_attempts.create_index("key", unique=True)
     await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
     await db.chat_messages.create_index([("room_id", 1), ("created_at", 1)])
+    await db.jobs.create_index("status")
+    await db.applications.create_index([("job_id", 1), ("email", 1)], unique=True)
 
 
 async def seed_admin_and_demo():
@@ -57,7 +59,11 @@ async def seed_admin_and_demo():
         await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
 
     # ---- demo employees ----
+    seed_jobs = await db.jobs.count_documents({}) == 0
     if await db.users.count_documents({"role": {"$ne": "super_admin"}}) > 0:
+        # Even if users already exist, ensure jobs are seeded so the careers page has content
+        if seed_jobs:
+            await _seed_sample_jobs(db)
         return  # demo already seeded
 
     departments = [
@@ -146,6 +152,9 @@ async def seed_admin_and_demo():
                     "used": 0,
                 })
 
+    # Sample jobs (public careers page)
+    await _seed_sample_jobs(db)
+
     # Sample announcement
     await db.announcements.insert_one({
         "id": str(uuid.uuid4()),
@@ -154,3 +163,58 @@ async def seed_admin_and_demo():
         "author_name": "Sarah Chen",
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
+
+
+
+async def _seed_sample_jobs(db):
+    """Idempotent insert of sample job postings."""
+    sample = [
+        {
+            "title": "Senior Product Designer",
+            "department": "Design",
+            "location": "San Francisco / Hybrid",
+            "employment_type": "Full-time",
+            "description": "We're looking for a senior product designer to shape end-to-end experiences across our enterprise dashboard. You'll partner with engineering and PM to ship polished, opinionated UI.",
+            "requirements": "5+ years of product design experience\nStrong portfolio showcasing dashboard / data-dense work\nFluency in Figma\nExcellent written communication",
+            "salary_range": "$140k – $185k",
+        },
+        {
+            "title": "Backend Engineer (Python / FastAPI)",
+            "department": "Engineering",
+            "location": "Remote (US / EU)",
+            "employment_type": "Full-time",
+            "description": "Join the platform team to build scalable APIs that power our HR and people-ops products. You'll own systems end-to-end.",
+            "requirements": "4+ years building production Python services\nDeep experience with FastAPI / async Python\nMongoDB / Postgres at scale\nBias for clarity & testing",
+            "salary_range": "$160k – $210k",
+        },
+        {
+            "title": "People Operations Specialist",
+            "department": "People Ops",
+            "location": "San Francisco",
+            "employment_type": "Full-time",
+            "description": "Help us build the operational backbone of a fast-growing company — onboarding, benefits, compliance, and culture programs.",
+            "requirements": "3+ years in People Ops / HR Ops\nFamiliar with US labour law basics\nObsessive about good employee experience",
+            "salary_range": "$95k – $125k",
+        },
+        {
+            "title": "Sales Development Representative",
+            "department": "Sales",
+            "location": "Remote",
+            "employment_type": "Full-time",
+            "description": "Help us grow our customer base by qualifying inbound leads and prospecting outbound to companies that would benefit from a modern HR platform.",
+            "requirements": "1-3 years of SDR experience (SaaS preferred)\nClear written communication\nResilient and curious",
+            "salary_range": "$70k base + commission",
+        },
+    ]
+    for s in sample:
+        existing = await db.jobs.find_one({"title": s["title"]})
+        if existing:
+            continue
+        await db.jobs.insert_one({
+            "id": str(uuid.uuid4()),
+            **s,
+            "status": "open",
+            "applicant_count": 0,
+            "created_by": "Sarah Chen",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
