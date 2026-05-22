@@ -1,0 +1,102 @@
+{
+  "identity": "E1 - The Anti-AI Designer",
+  "archetype": "Archetype 4 (Swiss & High-Contrast) + Soft Utility",
+  "theme": "Light",
+  "colors": {
+    "background": "#F8F9FA",
+    "surface": "#FFFFFF",
+    "border": "#E5E7EB",
+    "text_primary": "#111827",
+    "text_secondary": "#6B7280",
+    "primary": "#0F172A",
+    "primary_hover": "#1E293B",
+    "accent": "#2563EB"
+  },
+  "status_colors": {
+    "present": "bg-emerald-50 text-emerald-700 border border-emerald-200",
+    "absent": "bg-rose-50 text-rose-700 border border-rose-200",
+    "remote": "bg-blue-50 text-blue-700 border border-blue-200",
+    "on_leave": "bg-amber-50 text-amber-700 border border-amber-200",
+    "in_meeting": "bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200"
+  },
+  "typography": {
+    "fonts": {
+      "headings": "'Outfit', sans-serif",
+      "body": "'Manrope', sans-serif"
+    },
+    "scales": {
+      "h1": "text-4xl sm:text-5xl font-semibold tracking-tight leading-tight",
+      "h2": "text-2xl sm:text-3xl font-medium tracking-tight",
+      "h3": "text-xl sm:text-2xl font-medium tracking-tight",
+      "h4": "text-lg font-medium",
+      "body": "text-base leading-relaxed text-gray-700",
+      "small": "text-sm text-gray-500",
+      "label": "text-xs font-semibold uppercase tracking-[0.05em] text-gray-500"
+    }
+  },
+  "layout_strategy": {
+    "admin_dashboard": {
+      "structure": "grid grid-cols-1 lg:grid-cols-12 gap-6 p-6",
+      "navigation": "Collapsible left sidebar (w-64 expanded, w-16 collapsed). Dark bg (slate-900) for authoritative contrast, or clean white with right-border.",
+      "widgets": "Dense bento-box data presentation. Use col-span-3 for summary KPI cards, col-span-8 for main charts (Attendance/Leave trends), col-span-4 for feeds/pending approval queues."
+    },
+    "employee_dashboard": {
+      "structure": "grid grid-cols-1 md:grid-cols-8 gap-8 p-8 max-w-7xl mx-auto",
+      "navigation": "Streamlined top navigation or very light sidebar. Needs to feel spacious and friendly.",
+      "hero_section": "col-span-full md:col-span-5. 'Today' status hero card featuring a massive, interactive Check-In/Out button and current status indicator.",
+      "sidebar_widgets": "col-span-full md:col-span-3. Quick action buttons (Apply Leave, WFH, Meeting) and visually clean leave balance rings."
+    },
+    "surface_styles": {
+      "cards": "bg-white border border-gray-200 rounded-xl shadow-sm p-6",
+      "modals": "rounded-2xl backdrop-blur-sm bg-black/20 overlay for Shadcn Dialogs."
+    }
+  },
+  "components_customization": {
+    "buttons": "rounded-lg font-medium transition-all duration-200. Primary: bg-slate-900 text-white hover:bg-slate-800. Secondary: bg-white border border-gray-200 text-gray-700 hover:bg-gray-50. Limit use of Primary CTA to one per view.",
+    "tables": "Use Shadcn Table. Text-sm. Sticky header with bg-gray-50. Row hover with bg-gray-50/50. No vertical borders; use subtle horizontal borders (border-gray-100).",
+    "forms": "Use Shadcn Form. Input/Select with rounded-lg, border-gray-200, focus:ring-2 focus:ring-slate-900 focus:border-transparent.",
+    "tabs": "Use Shadcn Tabs. Override default background. Use simple underline tabs or pill tabs with bg-gray-100 for active state."
+  },
+  "media_urls": {
+    "auth_background": {
+      "url": "https://images.unsplash.com/photo-1769667693205-bfae7aefb59a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzF8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBjb3Jwb3JhdGUlMjBvZmZpY2UlMjBhYnN0cmFjdCUyMGFyY2hpdGVjdHVyZXxlbnwwfHx8fDE3Nzk0MzIxODd8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Modern hallway with abstract art and glass walls. Use as a half-screen background on the login page with a subtle light or dark gradient overlay to ensure legibility."
+    },
+    "employee_avatars": [
+      {
+        "url": "https://images.unsplash.com/photo-1573496130141-209d200cebd8?crop=entropy&cs=srgb&fm=jpg",
+        "description": "Professional women in suits, use for profile placeholders or directory avatars."
+      },
+      {
+        "url": "https://images.pexels.com/photos/7658241/pexels-photo-7658241.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Diverse group of young professionals, use for team/group cards or org chart placeholders."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1666867936058-de34bfd5b320?crop=entropy&cs=srgb&fm=jpg",
+        "description": "Professional portrait, use for individual employee views."
+      }
+    ]
+  },
+  "icons": {
+    "library": "lucide-react",
+    "installation": "npm install lucide-react",
+    "usage": "Use stroke-width=1.5 for a clean, premium enterprise feel."
+  },
+  "testing": {
+    "rule": "All interactive and key informational elements MUST include a data-testid attribute.",
+    "examples": [
+      "data-testid='login-submit-button'",
+      "data-testid='check-in-button'",
+      "data-testid='apply-leave-link'",
+      "data-testid='employee-directory-table'",
+      "data-testid='status-pill-present'"
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Do NOT use 'Inter', 'Roboto', or generic fonts. Import 'Outfit' (headings) and 'Manrope' (body) via Google Fonts.",
+    "Build two distinctly different dashboard experiences. Admin: Authoritative, data-dense, bento-grid based. Employee: Spacious, action-oriented, welcoming, focusing heavily on today's actions.",
+    "Implement the strict status pill colors exactly as defined in 'status_colors'. Do not use gradients for status pills; use the solid, soft backgrounds with colored text and borders provided.",
+    "Use pure HTML/Tailwind for layout structures (bento grids, sidebars). Use Shadcn strictly for interactive logic (Dialogs, Selects, Tables, Calendars) but customize their CSS to match this theme's spacing and radii.",
+    "Ensure the authentication page uses a split-screen design, utilizing the provided 'auth_background' image on one side with a subtle overlay, and the login form on the other."
+  ]
+}
