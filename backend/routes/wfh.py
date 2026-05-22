@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from auth import get_current_user, require_roles
 from db import get_db
 from email_service import send_email, render
+from tenant import company_id_of
 
 router = APIRouter(prefix="/api/wfh", tags=["wfh"])
 
@@ -24,7 +25,7 @@ class WFHDecision(BaseModel):
 @router.get("/mine")
 async def my_wfh(user: dict = Depends(get_current_user)):
     db = get_db()
-    items = await db.wfh_requests.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    items = await db.wfh_requests.find({"user_id": user["id"], "company_id": company_id_of(user)}, {"_id": 0}).sort("created_at", -1).to_list(200)
     return items
 
 
@@ -35,7 +36,7 @@ async def all_wfh(
     scope: Optional[str] = None,
 ):
     db = get_db()
-    q: dict = {}
+    q: dict = {"company_id": company_id_of(user)}
     if status and status != "all":
         q["status"] = status
     if scope == "team":
@@ -49,22 +50,23 @@ async def today_wfh(user: dict = Depends(get_current_user)):
     """Who is WFH today (approved)."""
     db = get_db()
     today = datetime.now(timezone.utc).date().isoformat()
-    items = await db.wfh_requests.find({"status": "approved", "date": today}, {"_id": 0}).to_list(200)
+    items = await db.wfh_requests.find({"status": "approved", "date": today, "company_id": company_id_of(user)}, {"_id": 0}).to_list(200)
     return items
 
 
 @router.post("/apply")
 async def apply_wfh(body: WFHApply, user: dict = Depends(get_current_user)):
     db = get_db()
-    if await db.wfh_requests.find_one({"user_id": user["id"], "date": body.date}):
+    cid = company_id_of(user)
+    if await db.wfh_requests.find_one({"user_id": user["id"], "date": body.date, "company_id": cid}):
         raise HTTPException(status_code=400, detail="You already have a WFH request for that date")
 
     # Resolve direct manager
-    emp = await db.employees.find_one({"user_id": user["id"]}, {"_id": 0, "manager_id": 1})
+    emp = await db.employees.find_one({"user_id": user["id"], "company_id": cid}, {"_id": 0, "manager_id": 1})
     manager_user_id = None
     manager_record = None
     if emp and emp.get("manager_id"):
-        manager_emp = await db.employees.find_one({"id": emp["manager_id"]}, {"_id": 0, "user_id": 1, "name": 1})
+        manager_emp = await db.employees.find_one({"id": emp["manager_id"], "company_id": cid}, {"_id": 0, "user_id": 1, "name": 1})
         if manager_emp:
             manager_user_id = manager_emp["user_id"]
             manager_record = manager_emp
@@ -73,6 +75,7 @@ async def apply_wfh(body: WFHApply, user: dict = Depends(get_current_user)):
         "id": str(uuid.uuid4()),
         "user_id": user["id"],
         "user_name": user["name"],
+        "company_id": cid,
         "date": body.date,
         "reason": body.reason,
         "status": "pending",

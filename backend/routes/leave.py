@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from auth import get_current_user, require_roles
 from db import get_db
 from email_service import send_email, render
+from tenant import company_id_of
 
 router = APIRouter(prefix="/api/leave", tags=["leave"])
 
@@ -33,14 +34,14 @@ def _days_between(s: str, e: str) -> int:
 @router.get("/balances")
 async def my_balances(user: dict = Depends(get_current_user)):
     db = get_db()
-    items = await db.leave_balances.find({"user_id": user["id"]}, {"_id": 0}).to_list(50)
+    items = await db.leave_balances.find({"user_id": user["id"], "company_id": company_id_of(user)}, {"_id": 0}).to_list(50)
     return items
 
 
 @router.get("/mine")
 async def my_requests(user: dict = Depends(get_current_user)):
     db = get_db()
-    items = await db.leave_requests.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    items = await db.leave_requests.find({"user_id": user["id"], "company_id": company_id_of(user)}, {"_id": 0}).sort("created_at", -1).to_list(200)
     return items
 
 
@@ -51,7 +52,7 @@ async def all_requests(
     scope: Optional[str] = None,  # "team" -> only direct reports of `user`
 ):
     db = get_db()
-    q: dict = {}
+    q: dict = {"company_id": company_id_of(user)}
     if status and status != "all":
         q["status"] = status
     if scope == "team":
@@ -87,14 +88,14 @@ async def apply_leave(body: LeaveApply, user: dict = Depends(get_current_user)):
     if days <= 0:
         raise HTTPException(status_code=400, detail="Invalid date range")
 
-    balance = await db.leave_balances.find_one({"user_id": user["id"], "leave_type": body.leave_type}, {"_id": 0})
+    balance = await db.leave_balances.find_one({"user_id": user["id"], "leave_type": body.leave_type, "company_id": company_id_of(user)}, {"_id": 0})
     if not balance:
         raise HTTPException(status_code=400, detail=f"No balance for {body.leave_type}")
     if (balance["total"] - balance["used"]) < days:
         raise HTTPException(status_code=400, detail="Not enough balance")
 
     # Resolve direct manager so the request is routed first to them
-    emp = await db.employees.find_one({"user_id": user["id"]}, {"_id": 0, "manager_id": 1})
+    emp = await db.employees.find_one({"user_id": user["id"], "company_id": company_id_of(user)}, {"_id": 0, "manager_id": 1})
     manager_user_id = None
     manager_record = None
     if emp and emp.get("manager_id"):
@@ -107,6 +108,7 @@ async def apply_leave(body: LeaveApply, user: dict = Depends(get_current_user)):
         "id": str(uuid.uuid4()),
         "user_id": user["id"],
         "user_name": user["name"],
+        "company_id": company_id_of(user),
         "leave_type": body.leave_type,
         "start_date": body.start_date,
         "end_date": body.end_date,

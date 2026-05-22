@@ -18,6 +18,7 @@ import AdminReports from "@/pages/admin/Reports";
 import AdminSettings from "@/pages/admin/Settings";
 import AdminJobs from "@/pages/admin/Jobs";
 import AdminOrgChart from "@/pages/admin/OrgChart";
+import AdminCompanies from "@/pages/admin/Companies";
 
 import EmployeeToday from "@/pages/employee/Today";
 import MyLeave from "@/pages/employee/MyLeave";
@@ -63,6 +64,7 @@ function App() {
             <Route path="announcements" element={<AdminAnnouncements />} />
             <Route path="reports" element={<AdminReports />} />
             <Route path="jobs" element={<AdminJobs />} />
+            <Route path="companies" element={<AdminCompanies />} />
             <Route path="settings" element={<AdminSettings />} />
           </Route>
 

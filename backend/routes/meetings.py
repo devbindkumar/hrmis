@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from auth import get_current_user
 from db import get_db
 from email_service import send_email, render
+from tenant import company_id_of
 
 router = APIRouter(prefix="/api/meetings", tags=["meetings"])
 
@@ -24,10 +25,12 @@ class MeetingCreate(BaseModel):
 @router.get("")
 async def list_meetings(user: dict = Depends(get_current_user), scope: str = "mine"):
     db = get_db()
+    cid = company_id_of(user)
     if scope == "all":
-        items = await db.meetings.find({}, {"_id": 0}).sort("starts_at", 1).to_list(500)
+        items = await db.meetings.find({"company_id": cid}, {"_id": 0}).sort("starts_at", 1).to_list(500)
     else:
         items = await db.meetings.find({
+            "company_id": cid,
             "$or": [
                 {"created_by": user["id"]},
                 {"attendee_user_ids": user["id"]},
@@ -41,6 +44,7 @@ async def create_meeting(body: MeetingCreate, user: dict = Depends(get_current_u
     db = get_db()
     doc = {
         "id": str(uuid.uuid4()),
+        "company_id": company_id_of(user),
         "title": body.title,
         "description": body.description or "",
         "starts_at": body.starts_at,

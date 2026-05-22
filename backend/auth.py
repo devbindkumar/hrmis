@@ -134,14 +134,25 @@ async def login(body: LoginBody):
     # success
     await db.login_attempts.delete_one({"key": attempt_key})
     token = create_access_token(user["id"], user["email"], user["role"])
+    user_payload = _strip_user(user)
+    # attach company info for convenience
+    if user_payload.get("company_id"):
+        company = await db.companies.find_one({"id": user_payload["company_id"]}, {"_id": 0, "id": 1, "name": 1, "slug": 1})
+        if company:
+            user_payload["company"] = company
     return {
         "token": token,
-        "user": _strip_user(user),
+        "user": user_payload,
     }
 
 
 @router.get("/me")
 async def me(user: dict = Depends(get_current_user)):
+    db = get_db()
+    if user.get("company_id"):
+        company = await db.companies.find_one({"id": user["company_id"]}, {"_id": 0, "id": 1, "name": 1, "slug": 1})
+        if company:
+            user["company"] = company
     return user
 
 

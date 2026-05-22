@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from auth import get_current_user
 from db import get_db
+from tenant import company_id_of
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -80,6 +81,7 @@ async def send(body: SendMessage, user: dict = Depends(get_current_user)):
     doc = {
         "id": str(uuid.uuid4()),
         "room_id": rid,
+        "company_id": company_id_of(user),
         "from_user_id": user["id"],
         "from_name": user["name"],
         "to_user_id": body.to_user_id,

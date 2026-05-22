@@ -56,9 +56,13 @@ class ApplicationCreate(BaseModel):
 # -------------------- PUBLIC --------------------
 
 @public_router.get("/jobs")
-async def public_list_jobs(department: Optional[str] = None, q: Optional[str] = None):
+async def public_list_jobs(department: Optional[str] = None, q: Optional[str] = None, company: Optional[str] = None):
     db = get_db()
-    query: dict = {"status": "open"}
+    slug = (company or "acme").lower()
+    comp = await db.companies.find_one({"slug": slug}, {"_id": 0, "id": 1})
+    if not comp:
+        return []
+    query: dict = {"status": "open", "company_id": comp["id"]}
     if department and department != "all":
         query["department"] = department
     if q:
@@ -94,6 +98,7 @@ async def public_apply(body: ApplicationCreate):
 
     doc = {
         "id": str(uuid.uuid4()),
+        "company_id": job.get("company_id"),
         "job_id": body.job_id,
         "job_title": job["title"],
         "name": body.name,
@@ -112,9 +117,10 @@ async def public_apply(body: ApplicationCreate):
     # bump job applicant count
     await db.jobs.update_one({"id": body.job_id}, {"$inc": {"applicant_count": 1}})
 
-    # notify HR/admins
+    # notify HR/admins of the right company
     await db.notifications.insert_one({
         "id": str(uuid.uuid4()),
+        "company_id": job.get("company_id"),
         "user_id": "admin",
         "audience": "admin",
         "type": "application",
@@ -142,7 +148,7 @@ async def public_apply(body: ApplicationCreate):
 @admin_router.get("")
 async def admin_list_jobs(user: dict = Depends(get_current_user), status: Optional[str] = None):
     db = get_db()
-    q: dict = {}
+    q: dict = {"company_id": company_id_of(user)}
     if status and status != "all":
         q["status"] = status
     items = await db.jobs.find(q, {"_id": 0}).sort("created_at", -1).to_list(200)
@@ -154,6 +160,7 @@ async def create_job(body: JobCreate, admin: dict = Depends(require_roles("super
     db = get_db()
     doc = {
         "id": str(uuid.uuid4()),
+        "company_id": company_id_of(admin),
         "title": body.title,
         "department": body.department,
         "location": body.location,
@@ -199,7 +206,7 @@ async def list_applications(
     stage: Optional[str] = None,
 ):
     db = get_db()
-    q: dict = {}
+    q: dict = {"company_id": company_id_of(user)}
     if job_id and job_id != "all":
         q["job_id"] = job_id
     if stage and stage != "all":

@@ -10,18 +10,58 @@ async def ensure_indexes():
     db = get_db()
     await db.users.create_index("email", unique=True)
     await db.users.create_index("id", unique=True)
+    await db.users.create_index("company_id")
     await db.employees.create_index("user_id", unique=True)
+    await db.employees.create_index("company_id")
+    await db.companies.create_index("slug", unique=True)
+    await db.companies.create_index("id", unique=True)
     await db.attendance.create_index([("user_id", 1), ("date", 1)], unique=True)
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=3600)
     await db.login_attempts.create_index("key", unique=True)
     await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
     await db.chat_messages.create_index([("room_id", 1), ("created_at", 1)])
     await db.jobs.create_index("status")
+    await db.jobs.create_index("company_id")
     await db.applications.create_index([("job_id", 1), ("email", 1)], unique=True)
+    await db.departments.create_index([("company_id", 1), ("name", 1)])
+    await db.leave_requests.create_index([("company_id", 1), ("status", 1)])
+    await db.wfh_requests.create_index([("company_id", 1), ("status", 1)])
+    await db.meetings.create_index("company_id")
+    await db.announcements.create_index("company_id")
+
+
+async def _ensure_default_company(db) -> str:
+    """Create the default Acme company if missing and backfill company_id on existing data."""
+    default = await db.companies.find_one({"slug": "acme"})
+    if not default:
+        default_id = str(uuid.uuid4())
+        default = {
+            "id": default_id,
+            "name": os.environ.get("COMPANY_NAME", "Acme Corp"),
+            "slug": "acme",
+            "escalation_hours": int(os.environ.get("ESCALATION_HOURS", "48")),
+            "status": "active",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_by": "system",
+        }
+        await db.companies.insert_one(default)
+    default_id = default["id"]
+    # Backfill company_id on every relevant collection
+    for coll in (
+        "users", "employees", "departments", "leave_requests", "leave_balances",
+        "wfh_requests", "meetings", "chat_messages", "announcements",
+        "notifications", "jobs", "applications", "attendance",
+    ):
+        await db[coll].update_many(
+            {"$or": [{"company_id": {"$exists": False}}, {"company_id": None}]},
+            {"$set": {"company_id": default_id}},
+        )
+    return default_id
 
 
 async def seed_admin_and_demo():
     db = get_db()
+    default_company_id = await _ensure_default_company(db)
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@acme.com").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "Admin@123")
 
@@ -35,12 +75,14 @@ async def seed_admin_and_demo():
             "name": "Sarah Chen",
             "role": "super_admin",
             "status": "active",
+            "company_id": default_company_id,
             "password_hash": hash_password(admin_password),
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
         await db.employees.insert_one({
             "id": str(uuid.uuid4()),
             "user_id": admin_id,
+            "company_id": default_company_id,
             "employee_code": "ACM-0001",
             "name": "Sarah Chen",
             "email": admin_email,

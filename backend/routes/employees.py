@@ -8,6 +8,7 @@ from pydantic import BaseModel, EmailStr, Field
 from auth import get_current_user, hash_password, require_roles
 from db import get_db
 from email_service import send_email, render
+from tenant import company_id_of
 
 router = APIRouter(prefix="/api/employees", tags=["employees"])
 
@@ -45,7 +46,7 @@ async def list_employees(
     q: Optional[str] = None,
 ):
     db = get_db()
-    query: dict = {}
+    query: dict = {"company_id": company_id_of(user)}
     if department and department != "all":
         query["department"] = department
     if status and status != "all":
@@ -77,14 +78,15 @@ async def list_employees(
 async def list_potential_managers(user: dict = Depends(get_current_user)):
     """Return employees who can be selected as a 'reports to' (managers, HR, super_admin)."""
     db = get_db()
+    cid = company_id_of(user)
     eligible_users = await db.users.find(
-        {"role": {"$in": ["super_admin", "hr", "manager"]}, "status": "active"},
+        {"role": {"$in": ["super_admin", "hr", "manager"]}, "status": "active", "company_id": cid},
         {"_id": 0, "id": 1, "role": 1},
     ).to_list(500)
     user_ids = [u["id"] for u in eligible_users]
     role_map = {u["id"]: u["role"] for u in eligible_users}
     emps = await db.employees.find(
-        {"user_id": {"$in": user_ids}, "status": "active"},
+        {"user_id": {"$in": user_ids}, "status": "active", "company_id": cid},
         {"_id": 0, "id": 1, "name": 1, "designation": 1, "department": 1, "user_id": 1, "avatar_url": 1},
     ).sort("name", 1).to_list(500)
     for e in emps:
@@ -97,7 +99,7 @@ async def list_direct_reports(employee_id: str, user: dict = Depends(get_current
     """Direct reports of the given employee (people whose manager_id == this employee.id)."""
     db = get_db()
     reports = await db.employees.find(
-        {"manager_id": employee_id, "status": "active"},
+        {"manager_id": employee_id, "status": "active", "company_id": company_id_of(user)},
         {"_id": 0, "id": 1, "name": 1, "designation": 1, "department": 1, "avatar_url": 1, "email": 1},
     ).sort("name", 1).to_list(500)
     return reports
@@ -108,12 +110,12 @@ async def team_today(user: dict = Depends(get_current_user)):
     """Today's status for each direct report of the calling user."""
     from datetime import datetime as _dt, timezone as _tz
     db = get_db()
-    # find caller's employee record
-    me = await db.employees.find_one({"user_id": user["id"]}, {"_id": 0, "id": 1})
+    cid = company_id_of(user)
+    me = await db.employees.find_one({"user_id": user["id"], "company_id": cid}, {"_id": 0, "id": 1})
     if not me:
         return {"reports": []}
     reports = await db.employees.find(
-        {"manager_id": me["id"], "status": "active"},
+        {"manager_id": me["id"], "status": "active", "company_id": cid},
         {"_id": 0, "id": 1, "user_id": 1, "name": 1, "designation": 1, "avatar_url": 1, "department": 1},
     ).sort("name", 1).to_list(500)
     if not reports:
@@ -211,6 +213,7 @@ async def get_employee(employee_id: str, user: dict = Depends(get_current_user))
 @router.post("")
 async def create_employee(body: EmployeeCreate, admin: dict = Depends(require_roles("super_admin", "hr"))):
     db = get_db()
+    cid = company_id_of(admin)
     email = body.email.lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email already exists")
@@ -223,15 +226,20 @@ async def create_employee(body: EmployeeCreate, admin: dict = Depends(require_ro
         "name": body.name,
         "role": body.role,
         "status": "active",
+        "company_id": cid,
         "password_hash": hash_password(body.password),
         "created_at": now,
     })
 
-    count = await db.employees.count_documents({})
+    count = await db.employees.count_documents({"company_id": cid})
+    # Get company prefix for employee code
+    company = await db.companies.find_one({"id": cid}, {"_id": 0, "slug": 1})
+    prefix = (company.get("slug", "emp") if company else "emp")[:3].upper()
     emp = {
         "id": str(uuid.uuid4()),
         "user_id": user_id,
-        "employee_code": f"ACM-{count + 1:04d}",
+        "company_id": cid,
+        "employee_code": f"{prefix}-{count + 1:04d}",
         "name": body.name,
         "email": email,
         "department": body.department,
@@ -251,6 +259,7 @@ async def create_employee(body: EmployeeCreate, admin: dict = Depends(require_ro
     for lt, qty in [("Casual", 12), ("Sick", 8), ("Earned", 15), ("WFH Quota", 60)]:
         await db.leave_balances.insert_one({
             "id": str(uuid.uuid4()),
+            "company_id": cid,
             "user_id": user_id,
             "leave_type": lt,
             "total": qty,

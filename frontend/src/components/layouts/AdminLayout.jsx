@@ -2,7 +2,7 @@ import { NavLink, Outlet, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   LayoutDashboard, Users, Clock, CalendarDays, Home, Video,
-  MessagesSquare, Megaphone, BarChart3, Settings, LogOut, Building2, Bell, Briefcase, Network,
+  MessagesSquare, Megaphone, BarChart3, Settings, LogOut, Building2, Bell, Briefcase, Network, Globe2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
@@ -25,6 +25,7 @@ const NAV = [
   { to: "/admin/announcements", label: "Announcements", icon: Megaphone },
   { to: "/admin/jobs", label: "Jobs", icon: Briefcase },
   { to: "/admin/reports", label: "Reports", icon: BarChart3 },
+  { to: "/admin/companies", label: "Companies", icon: Globe2 },
   { to: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
@@ -60,9 +61,9 @@ export default function AdminLayout() {
           <div className="h-8 w-8 rounded-lg bg-white/10 grid place-items-center">
             <Building2 className="h-4 w-4 text-white" strokeWidth={1.5} />
           </div>
-          <div>
-            <div className="font-display text-base font-semibold text-white">Acme</div>
-            <div className="text-[10px] uppercase tracking-widest text-slate-400">HRMIS · Admin</div>
+          <div className="min-w-0">
+            <div className="font-display text-base font-semibold text-white truncate">{user?.company?.name || "Workspace"}</div>
+            <div className="text-[10px] uppercase tracking-widest text-slate-400">HRMIS · {user?.role === "super_admin" ? "Admin" : user?.role}</div>
           </div>
         </div>
 

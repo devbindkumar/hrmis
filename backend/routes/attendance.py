@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from auth import get_current_user, require_roles
 from db import get_db
+from tenant import company_id_of
 
 router = APIRouter(prefix="/api/attendance", tags=["attendance"])
 
@@ -42,6 +43,7 @@ async def check_in(user: dict = Depends(get_current_user)):
     doc = {
         "id": existing["id"] if existing else str(uuid.uuid4()),
         "user_id": user["id"],
+        "company_id": company_id_of(user),
         "date": today,
         "check_in": now,
         "check_out": None,
@@ -106,15 +108,17 @@ async def my_history(user: dict = Depends(get_current_user), days: int = 30):
 async def monitor(admin: dict = Depends(require_roles("super_admin", "hr", "manager")), day: Optional[str] = None):
     """Return attendance for everyone for a specific day (default today)."""
     db = get_db()
+    cid = company_id_of(admin)
     target = day or _today_str()
 
-    employees = await db.employees.find({"status": "active"}, {"_id": 0}).to_list(500)
+    employees = await db.employees.find({"status": "active", "company_id": cid}, {"_id": 0}).to_list(500)
     user_ids = [e["user_id"] for e in employees]
     attendance = await db.attendance.find({"user_id": {"$in": user_ids}, "date": target}, {"_id": 0}).to_list(500)
     a_map = {a["user_id"]: a for a in attendance}
 
     # Identify who is on approved leave / wfh today
     on_leave = await db.leave_requests.find({
+        "company_id": cid,
         "status": "approved",
         "start_date": {"$lte": target},
         "end_date": {"$gte": target},
@@ -122,6 +126,7 @@ async def monitor(admin: dict = Depends(require_roles("super_admin", "hr", "mana
     leave_users = {l["user_id"] for l in on_leave}
 
     on_wfh = await db.wfh_requests.find({
+        "company_id": cid,
         "status": "approved",
         "date": target,
     }, {"_id": 0}).to_list(500)

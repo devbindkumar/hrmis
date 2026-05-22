@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from auth import get_current_user, require_roles
 from db import get_db
 from email_service import send_email, render
+from tenant import company_id_of
 
 router = APIRouter(prefix="/api/announcements", tags=["announcements"])
 
@@ -20,15 +21,17 @@ class AnnouncementCreate(BaseModel):
 @router.get("")
 async def list_announcements(user: dict = Depends(get_current_user), limit: int = 50):
     db = get_db()
-    items = await db.announcements.find({}, {"_id": 0}).sort("created_at", -1).to_list(limit)
+    items = await db.announcements.find({"company_id": company_id_of(user)}, {"_id": 0}).sort("created_at", -1).to_list(limit)
     return items
 
 
 @router.post("")
 async def create_announcement(body: AnnouncementCreate, admin: dict = Depends(require_roles("super_admin", "hr"))):
     db = get_db()
+    cid = company_id_of(admin)
     doc = {
         "id": str(uuid.uuid4()),
+        "company_id": cid,
         "title": body.title,
         "body": body.body,
         "author_name": admin["name"],
@@ -36,10 +39,11 @@ async def create_announcement(body: AnnouncementCreate, admin: dict = Depends(re
     }
     await db.announcements.insert_one(doc)
     # notifications
-    users = await db.users.find({"status": "active"}, {"_id": 0, "id": 1, "email": 1, "name": 1}).to_list(1000)
+    users = await db.users.find({"status": "active", "company_id": cid}, {"_id": 0, "id": 1, "email": 1, "name": 1}).to_list(1000)
     for u in users:
         await db.notifications.insert_one({
             "id": str(uuid.uuid4()),
+            "company_id": cid,
             "user_id": u["id"],
             "type": "announcement",
             "title": body.title,

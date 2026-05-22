@@ -62,17 +62,28 @@ export default function MyLeave() {
               <th className="text-left font-semibold px-5 py-3">Days</th>
               <th className="text-left font-semibold px-5 py-3">Reason</th>
               <th className="text-left font-semibold px-5 py-3">Status</th>
+              <th className="text-left font-semibold px-5 py-3">Decision</th>
             </tr>
           </thead>
           <tbody>
-            {mine.length === 0 ? <tr><td colSpan="5" className="px-5 py-10 text-center text-slate-400">No leave requests yet.</td></tr> :
+            {mine.length === 0 ? <tr><td colSpan="6" className="px-5 py-10 text-center text-slate-400">No leave requests yet.</td></tr> :
               mine.map((r) => (
-                <tr key={r.id} className="border-t border-slate-100 hover:bg-slate-50/60">
+                <tr key={r.id} className="border-t border-slate-100 hover:bg-slate-50/60 align-top">
                   <td className="px-5 py-3 font-medium text-slate-900">{r.leave_type}</td>
                   <td className="px-5 py-3 text-slate-700">{r.start_date} → {r.end_date}</td>
                   <td className="px-5 py-3 text-slate-700">{r.days}</td>
                   <td className="px-5 py-3 text-slate-600 max-w-xs truncate" title={r.reason}>{r.reason}</td>
                   <td className="px-5 py-3"><StatusPill status={r.status} /></td>
+                  <td className="px-5 py-3 max-w-sm">
+                    {r.status === "pending" ? (
+                      <span className="text-xs text-slate-400">{r.manager_name ? `Awaiting ${r.manager_name}` : "Awaiting HR"}</span>
+                    ) : (
+                      <div>
+                        <div className="text-xs text-slate-500">by <b className="text-slate-700">{r.decided_by || "HR"}</b>{r.decided_at && <span className="text-slate-400"> · {new Date(r.decided_at).toLocaleDateString()}</span>}</div>
+                        {r.decision_note ? <div className="text-xs text-slate-700 mt-1 italic">"{r.decision_note}"</div> : null}
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))}
           </tbody>

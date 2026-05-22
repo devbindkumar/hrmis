@@ -49,8 +49,8 @@ export default function EmployeeLayout() {
             <div className="h-8 w-8 rounded-lg bg-slate-900 grid place-items-center">
               <Briefcase className="h-4 w-4 text-white" strokeWidth={1.5} />
             </div>
-            <div>
-              <div className="font-display text-base font-semibold text-slate-900 leading-none">Acme HR</div>
+            <div className="min-w-0">
+              <div className="font-display text-base font-semibold text-slate-900 leading-none truncate max-w-[180px]">{user?.company?.name || "My HR"}</div>
               <div className="text-[10px] uppercase tracking-widest text-slate-400">My workspace</div>
             </div>
           </Link>
