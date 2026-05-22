@@ -61,9 +61,47 @@ async def list_employees(
     user_ids = [e["user_id"] for e in items]
     users = await db.users.find({"id": {"$in": user_ids}}, {"_id": 0, "id": 1, "role": 1, "status": 1}).to_list(500)
     role_map = {u["id"]: u for u in users}
+    # attach manager name (manager_id stores an employee id)
+    manager_ids = [e.get("manager_id") for e in items if e.get("manager_id")]
+    managers = await db.employees.find({"id": {"$in": manager_ids}}, {"_id": 0, "id": 1, "name": 1, "designation": 1}).to_list(500) if manager_ids else []
+    mgr_map = {m["id"]: m for m in managers}
     for e in items:
         e["role"] = role_map.get(e["user_id"], {}).get("role", "employee")
+        mgr = mgr_map.get(e.get("manager_id")) if e.get("manager_id") else None
+        e["manager_name"] = mgr["name"] if mgr else None
+        e["manager_designation"] = mgr["designation"] if mgr else None
     return items
+
+
+@router.get("/managers")
+async def list_potential_managers(user: dict = Depends(get_current_user)):
+    """Return employees who can be selected as a 'reports to' (managers, HR, super_admin)."""
+    db = get_db()
+    eligible_users = await db.users.find(
+        {"role": {"$in": ["super_admin", "hr", "manager"]}, "status": "active"},
+        {"_id": 0, "id": 1, "role": 1},
+    ).to_list(500)
+    user_ids = [u["id"] for u in eligible_users]
+    role_map = {u["id"]: u["role"] for u in eligible_users}
+    emps = await db.employees.find(
+        {"user_id": {"$in": user_ids}, "status": "active"},
+        {"_id": 0, "id": 1, "name": 1, "designation": 1, "department": 1, "user_id": 1, "avatar_url": 1},
+    ).sort("name", 1).to_list(500)
+    for e in emps:
+        e["role"] = role_map.get(e["user_id"], "employee")
+    return emps
+
+
+@router.get("/{employee_id}/reports")
+async def list_direct_reports(employee_id: str, user: dict = Depends(get_current_user)):
+    """Direct reports of the given employee (people whose manager_id == this employee.id)."""
+    db = get_db()
+    reports = await db.employees.find(
+        {"manager_id": employee_id, "status": "active"},
+        {"_id": 0, "id": 1, "name": 1, "designation": 1, "department": 1, "avatar_url": 1, "email": 1},
+    ).sort("name", 1).to_list(500)
+    return reports
+
 
 
 @router.get("/me")
@@ -73,6 +111,13 @@ async def my_employee(user: dict = Depends(get_current_user)):
     if not emp:
         raise HTTPException(status_code=404, detail="Employee record not found")
     emp["role"] = user["role"]
+    if emp.get("manager_id"):
+        mgr = await db.employees.find_one({"id": emp["manager_id"]}, {"_id": 0, "name": 1, "designation": 1, "avatar_url": 1, "email": 1, "id": 1})
+        if mgr:
+            emp["manager_name"] = mgr["name"]
+            emp["manager_designation"] = mgr.get("designation")
+            emp["manager_avatar_url"] = mgr.get("avatar_url")
+            emp["manager_email"] = mgr.get("email")
     return emp
 
 
@@ -84,6 +129,11 @@ async def get_employee(employee_id: str, user: dict = Depends(get_current_user))
         raise HTTPException(status_code=404, detail="Employee not found")
     u = await db.users.find_one({"id": emp["user_id"]}, {"_id": 0, "role": 1, "status": 1})
     emp["role"] = u["role"] if u else "employee"
+    if emp.get("manager_id"):
+        mgr = await db.employees.find_one({"id": emp["manager_id"]}, {"_id": 0, "name": 1, "designation": 1})
+        if mgr:
+            emp["manager_name"] = mgr["name"]
+            emp["manager_designation"] = mgr.get("designation")
     return emp
 
 

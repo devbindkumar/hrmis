@@ -1,16 +1,24 @@
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Mail, Phone, Building2, MapPin, Briefcase, IdCard, Clock, Calendar } from "lucide-react";
+import { Mail, Phone, Building2, MapPin, Briefcase, IdCard, Clock, Calendar, Users2, ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function Profile() {
   const [me, setMe] = useState(null);
   const [hist, setHist] = useState([]);
+  const [reports, setReports] = useState([]);
 
   useEffect(() => {
-    api.get("/employees/me").then((r)=>setMe(r.data));
-    api.get("/attendance/history").then((r)=>setHist(r.data));
+    const load = async () => {
+      const { data: emp } = await api.get("/employees/me");
+      setMe(emp);
+      api.get("/attendance/history").then((r)=>setHist(r.data));
+      if (emp?.id) {
+        api.get(`/employees/${emp.id}/reports`).then((r)=>setReports(r.data)).catch(()=>{});
+      }
+    };
+    load();
   }, []);
 
   if (!me) return <div className="space-y-4"><Skeleton className="h-44" /><Skeleton className="h-44" /></div>;
@@ -47,6 +55,28 @@ export default function Profile() {
             <Row icon={Clock} label="Shift" value={me.shift} />
             <Row icon={Calendar} label="Joined" value={me.joined_at} />
           </dl>
+
+          {/* Reports-to / manager */}
+          <div className="mt-6 pt-5 border-t border-slate-100" data-testid="manager-card">
+            <div className="text-xs uppercase tracking-widest text-slate-400 font-semibold">Reports to</div>
+            {me.manager_name ? (
+              <div className="mt-3 flex items-center gap-3">
+                <Avatar className="h-10 w-10">
+                  <AvatarImage src={me.manager_avatar_url} alt={me.manager_name} />
+                  <AvatarFallback className="text-xs bg-slate-100">{me.manager_name.split(" ").map(p=>p[0]).slice(0,2).join("")}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-slate-900 truncate">{me.manager_name}</div>
+                  <div className="text-xs text-slate-500 truncate">{me.manager_designation}</div>
+                </div>
+                {me.manager_email && (
+                  <a href={`mailto:${me.manager_email}`} className="ml-auto text-xs text-blue-600 hover:underline">Email</a>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400 mt-2">You report directly to leadership.</p>
+            )}
+          </div>
         </div>
 
         <div className="surface p-6 lg:col-span-2">
@@ -75,6 +105,34 @@ export default function Profile() {
           </div>
         </div>
       </div>
+
+      {/* Direct reports section - only shown if person has any */}
+      {reports.length > 0 && (
+        <div className="surface p-6" data-testid="direct-reports-card">
+          <div className="flex items-center gap-2">
+            <Users2 className="h-4 w-4 text-slate-500" strokeWidth={1.5} />
+            <h3 className="font-display text-lg font-medium text-slate-900">Your team</h3>
+            <span className="text-xs text-slate-500 ml-1">· {reports.length} direct {reports.length === 1 ? "report" : "reports"}</span>
+          </div>
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {reports.map((r) => (
+              <div key={r.id} className="rounded-lg border border-slate-100 hover:border-slate-200 p-3 flex items-center gap-3 transition-colors" data-testid={`report-${r.id}`}>
+                <Avatar className="h-10 w-10">
+                  <AvatarImage src={r.avatar_url} alt={r.name} />
+                  <AvatarFallback className="text-xs bg-slate-100">{r.name.split(" ").map(p=>p[0]).slice(0,2).join("")}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-slate-900 truncate">{r.name}</div>
+                  <div className="text-xs text-slate-500 truncate">{r.designation}</div>
+                </div>
+                <a href={`mailto:${r.email}`} className="text-slate-400 hover:text-blue-600" title="Email">
+                  <Mail className="h-4 w-4" strokeWidth={1.5} />
+                </a>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

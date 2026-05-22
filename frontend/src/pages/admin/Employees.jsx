@@ -92,15 +92,16 @@ export default function Employees() {
               <th className="text-left font-semibold px-5 py-3">Code</th>
               <th className="text-left font-semibold px-5 py-3">Department</th>
               <th className="text-left font-semibold px-5 py-3">Role</th>
+              <th className="text-left font-semibold px-5 py-3">Reports to</th>
               <th className="text-left font-semibold px-5 py-3">Location</th>
               <th className="text-left font-semibold px-5 py-3">Status</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan="6" className="px-5 py-12 text-center text-slate-400"><Loader2 className="h-5 w-5 animate-spin inline" /></td></tr>
+              <tr><td colSpan="7" className="px-5 py-12 text-center text-slate-400"><Loader2 className="h-5 w-5 animate-spin inline" /></td></tr>
             ) : list.length === 0 ? (
-              <tr><td colSpan="6" className="px-5 py-12 text-center text-slate-400">No people found.</td></tr>
+              <tr><td colSpan="7" className="px-5 py-12 text-center text-slate-400">No people found.</td></tr>
             ) : list.map((e) => (
               <tr key={e.id} className="border-t border-slate-100 hover:bg-slate-50/60 transition-colors">
                 <td className="px-5 py-3">
@@ -121,6 +122,16 @@ export default function Employees() {
                   <div className="text-xs text-slate-500">{e.designation}</div>
                 </td>
                 <td className="px-5 py-3"><span className="inline-block px-2 py-0.5 rounded-md text-xs bg-slate-100 text-slate-700 border border-slate-200">{ROLE_LABELS[e.role] || e.role}</span></td>
+                <td className="px-5 py-3">
+                  {e.manager_name ? (
+                    <div>
+                      <div className="text-sm text-slate-800 font-medium">{e.manager_name}</div>
+                      <div className="text-xs text-slate-500">{e.manager_designation}</div>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-slate-400">—</span>
+                  )}
+                </td>
                 <td className="px-5 py-3 text-slate-600">{e.location}</td>
                 <td className="px-5 py-3"><StatusPill status={e.status === 'active' ? 'active' : 'absent'} label={e.status === 'active' ? 'Active' : 'Inactive'} /></td>
               </tr>
@@ -133,8 +144,13 @@ export default function Employees() {
 }
 
 function NewEmployeeDialog({ departments, onCreated }) {
-  const [form, setForm] = useState({ name: "", email: "", department: "", designation: "", role: "employee", location: "HQ", password: "Demo@123" });
+  const [form, setForm] = useState({ name: "", email: "", department: "", designation: "", role: "employee", location: "HQ", password: "Demo@123", manager_id: "" });
   const [busy, setBusy] = useState(false);
+  const [managers, setManagers] = useState([]);
+
+  useEffect(() => {
+    api.get("/employees/managers").then((r) => setManagers(r.data));
+  }, []);
 
   const submit = async () => {
     if (!form.name || !form.email || !form.department || !form.designation) {
@@ -142,7 +158,9 @@ function NewEmployeeDialog({ departments, onCreated }) {
     }
     setBusy(true);
     try {
-      await api.post("/employees", form);
+      const payload = { ...form };
+      if (!payload.manager_id) delete payload.manager_id;
+      await api.post("/employees", payload);
       toast.success("Employee added");
       onCreated();
     } catch (e) {
@@ -191,6 +209,25 @@ function NewEmployeeDialog({ departments, onCreated }) {
         <div>
           <Label>Location</Label>
           <Input value={form.location} onChange={(e)=>setForm({...form, location: e.target.value})} className="mt-1.5" />
+        </div>
+        <div className="col-span-2">
+          <Label>Reports to</Label>
+          <Select value={form.manager_id || "none"} onValueChange={(v)=>setForm({...form, manager_id: v === "none" ? "" : v})}>
+            <SelectTrigger className="mt-1.5" data-testid="ne-manager"><SelectValue placeholder="Select a manager" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No manager (reports directly to leadership)</SelectItem>
+              {managers.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  <span className="flex items-center gap-2">
+                    <span className="font-medium">{m.name}</span>
+                    <span className="text-xs text-slate-500">· {m.designation}</span>
+                    <span className="ml-1 text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600">{m.role === "super_admin" ? "Admin" : m.role}</span>
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-slate-500 mt-1">The selected person will see this employee in their direct reports list and can approve their leave / WFH.</p>
         </div>
         <div className="col-span-2">
           <Label>Temporary password</Label>
