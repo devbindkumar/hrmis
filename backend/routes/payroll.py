@@ -1,9 +1,12 @@
 """Lightweight payroll module: salary structures + monthly payslip runs."""
 import uuid
+import io
+import csv
 from datetime import datetime, timezone
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from auth import get_current_user, require_roles
@@ -219,7 +222,7 @@ async def get_payslip(payslip_id: str, user: dict = Depends(get_current_user)):
 
 
 @router.post("/payslips/{payslip_id}/finalize")
-async def finalize_payslip(payslip_id: str, admin: dict = Depends(require_roles("super_admin", "hr"))):
+async def finalize_payslip(payslip_id: str, admin: dict = Depends(require_roles("super_admin"))):
     db = get_db()
     ps = await db.payslips.find_one({"id": payslip_id, "company_id": company_id_of(admin)}, {"_id": 0})
     if not ps:
@@ -261,7 +264,7 @@ async def finalize_payslip(payslip_id: str, admin: dict = Depends(require_roles(
 
 
 @router.post("/payslips/{payslip_id}/mark-paid")
-async def mark_paid(payslip_id: str, admin: dict = Depends(require_roles("super_admin", "hr"))):
+async def mark_paid(payslip_id: str, admin: dict = Depends(require_roles("super_admin"))):
     db = get_db()
     ps = await db.payslips.find_one({"id": payslip_id, "company_id": company_id_of(admin)}, {"_id": 0})
     if not ps:
@@ -309,3 +312,166 @@ async def summary(admin: dict = Depends(require_roles("super_admin", "hr"))):
         "last_run_period": last_period,
         "period_stats": period_stats,
     }
+
+
+
+# ---------------- Period approval (Super Admin gate) ----------------
+
+class ApproveMonthBody(BaseModel):
+    period: str  # YYYY-MM
+
+
+@router.get("/period-status")
+async def period_status(period: str, user: dict = Depends(require_roles("super_admin", "hr", "manager"))):
+    """Summary of a specific pay period: counts, totals, who can approve."""
+    db = get_db()
+    cid = company_id_of(user)
+    docs = await db.payslips.find({"company_id": cid, "period": period}, {"_id": 0}).to_list(2000)
+    drafts = [d for d in docs if d["status"] == "draft"]
+    finalized = [d for d in docs if d["status"] == "finalized"]
+    paid = [d for d in docs if d["status"] == "paid"]
+    total_draft_net = round(sum(d["components"]["net"] for d in drafts), 2)
+    total_draft_gross = round(sum(d["components"]["gross"] for d in drafts), 2)
+    total_finalized_net = round(sum(d["components"]["net"] for d in finalized + paid), 2)
+    currency = docs[0]["components"]["currency"] if docs else "USD"
+    return {
+        "period": period,
+        "draft_count": len(drafts),
+        "finalized_count": len(finalized),
+        "paid_count": len(paid),
+        "total_count": len(docs),
+        "total_draft_net": total_draft_net,
+        "total_draft_gross": total_draft_gross,
+        "total_finalized_net": total_finalized_net,
+        "currency": currency,
+        "needs_approval": len(drafts) > 0,
+        "approver_role": "super_admin",
+    }
+
+
+@router.post("/approve-month")
+async def approve_month(body: ApproveMonthBody, admin: dict = Depends(require_roles("super_admin"))):
+    """Super-admin approval: finalize every draft payslip for the period in one shot.
+    Sends an in-app notification + email to each employee whose payslip is being finalized."""
+    db = get_db()
+    cid = company_id_of(admin)
+    period = body.period.strip()
+    drafts = await db.payslips.find({"company_id": cid, "period": period, "status": "draft"}, {"_id": 0}).to_list(2000)
+    if not drafts:
+        raise HTTPException(status_code=400, detail="No draft payslips for that period")
+
+    now = datetime.now(timezone.utc).isoformat()
+    finalized_total = 0
+    for ps in drafts:
+        await db.payslips.update_one(
+            {"id": ps["id"]},
+            {"$set": {
+                "status": "finalized",
+                "finalized_at": now,
+                "finalized_by": admin["name"],
+                "approved_by": admin["name"],
+                "approved_at": now,
+            }},
+        )
+        # in-app notify the employee
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "company_id": cid,
+            "user_id": ps["user_id"],
+            "type": "payslip_finalized",
+            "title": f"Payslip for {ps['period']} is ready",
+            "body": f"Your {ps['period']} payslip has been approved. Net pay: {ps['components']['currency']} {ps['components']['net']:.2f}",
+            "read": False,
+            "created_at": now,
+        })
+        # email best-effort
+        user = await db.users.find_one({"id": ps["user_id"]}, {"_id": 0})
+        if user:
+            c = ps["components"]
+            await send_email(
+                user["email"],
+                f"Payslip available for {ps['period']}",
+                render(
+                    f"Your {ps['period']} payslip is ready",
+                    f"<p>Hi {user['name']},</p>"
+                    f"<p>Your <b>{ps['period']}</b> payslip has been approved by <b>{admin['name']}</b>.</p>"
+                    f"<p><b>Gross:</b> {c['currency']} {c['gross']:.2f}<br/>"
+                    f"<b>Deductions:</b> {c['currency']} {c['total_deductions']:.2f}<br/>"
+                    f"<b>Net pay:</b> <b>{c['currency']} {c['net']:.2f}</b></p>"
+                    f"<p>You can view the full payslip in your HR workspace under Payslips.</p>",
+                ),
+            )
+        finalized_total += 1
+
+    # Record a payroll-batch audit doc
+    total_net = round(sum(d["components"]["net"] for d in drafts), 2)
+    total_gross = round(sum(d["components"]["gross"] for d in drafts), 2)
+    await db.payroll_runs.insert_one({
+        "id": str(uuid.uuid4()),
+        "company_id": cid,
+        "period": period,
+        "approved_by": admin["name"],
+        "approved_at": now,
+        "count": finalized_total,
+        "total_net": total_net,
+        "total_gross": total_gross,
+        "currency": drafts[0]["components"]["currency"],
+    })
+    return {"period": period, "finalized": finalized_total, "total_net": total_net, "total_gross": total_gross}
+
+
+# ---------------- CSV export ----------------
+
+@router.get("/payslips/export.csv")
+async def export_payslips_csv(
+    user: dict = Depends(require_roles("super_admin", "hr")),
+    period: Optional[str] = None,
+    status: Optional[str] = None,
+):
+    db = get_db()
+    q: dict = {"company_id": company_id_of(user)}
+    if period:
+        q["period"] = period
+    if status and status != "all":
+        q["status"] = status
+    items = await db.payslips.find(q, {"_id": 0}).sort([("period", -1), ("user_name", 1)]).to_list(5000)
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "Period", "Employee", "Code", "Designation", "Currency",
+        "Base", "HRA", "Transport", "Special", "Gross",
+        "PF %", "PF amount", "Tax %", "Tax amount", "Total deductions", "Net",
+        "Status", "Generated at", "Finalized at", "Paid at",
+    ])
+    for ps in items:
+        c = ps.get("components", {})
+        writer.writerow([
+            ps.get("period", ""),
+            ps.get("user_name", ""),
+            ps.get("employee_code", ""),
+            ps.get("designation", ""),
+            c.get("currency", ""),
+            c.get("base_salary", ""),
+            c.get("hra", ""),
+            c.get("transport", ""),
+            c.get("special", ""),
+            c.get("gross", ""),
+            c.get("pf_pct", ""),
+            c.get("pf_amount", ""),
+            c.get("tax_pct", ""),
+            c.get("tax_amount", ""),
+            c.get("total_deductions", ""),
+            c.get("net", ""),
+            ps.get("status", ""),
+            ps.get("generated_at", ""),
+            ps.get("finalized_at", ""),
+            ps.get("paid_at", ""),
+        ])
+    buf.seek(0)
+    filename = f"payslips-{period or 'all'}-{datetime.now(timezone.utc).date().isoformat()}.csv"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

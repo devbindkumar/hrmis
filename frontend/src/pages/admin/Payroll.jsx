@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import api, { formatApiError } from "@/lib/api";
+import api, { formatApiError, getToken } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,8 +7,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Banknote, Wallet, Users2, Loader2, Pencil, Play, CheckCircle2, FileText } from "lucide-react";
+import { Banknote, Wallet, Users2, Loader2, Pencil, Play, CheckCircle2, FileText, ShieldCheck, Download, Printer } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 const STAGE_COLORS = {
   draft: "bg-slate-100 text-slate-700 border-slate-200",
@@ -37,58 +38,80 @@ function thisMonth() {
 }
 
 export default function Payroll() {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super_admin";
   const [tab, setTab] = useState("summary");
   const [summary, setSummary] = useState(null);
   const [structures, setStructures] = useState([]);
   const [payslips, setPayslips] = useState([]);
+  const [periodStatus, setPeriodStatus] = useState(null);
   const [period, setPeriod] = useState(thisMonth());
   const [editing, setEditing] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [runningPayroll, setRunningPayroll] = useState(false);
+  const [approving, setApproving] = useState(false);
 
   const loadSummary = () => api.get("/payroll/summary").then((r) => setSummary(r.data));
   const loadStructures = () => api.get("/payroll/structures").then((r) => setStructures(r.data));
   const loadPayslips = () => api.get("/payroll/payslips", { params: { period } }).then((r) => setPayslips(r.data));
+  const loadPeriodStatus = () => api.get("/payroll/period-status", { params: { period } }).then((r) => setPeriodStatus(r.data));
 
-  useEffect(() => { loadSummary(); loadStructures(); loadPayslips(); /* eslint-disable-next-line */ }, []);
-  useEffect(() => { loadPayslips(); /* eslint-disable-next-line */ }, [period]);
+  useEffect(() => { loadSummary(); loadStructures(); loadPayslips(); loadPeriodStatus(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { loadPayslips(); loadPeriodStatus(); /* eslint-disable-next-line */ }, [period]);
 
   const runPayroll = async () => {
     setRunningPayroll(true);
     try {
       const { data } = await api.post("/payroll/run", { period });
       toast.success(`Payroll for ${monthDisplay(period)} · created ${data.created}, updated ${data.updated}, skipped ${data.skipped}`);
-      loadPayslips();
-      loadSummary();
+      loadPayslips(); loadSummary(); loadPeriodStatus();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
     finally { setRunningPayroll(false); }
+  };
+
+  const approveMonth = async () => {
+    if (!periodStatus?.draft_count) { toast.error("No drafts to approve"); return; }
+    if (!window.confirm(`Approve and finalize ${periodStatus.draft_count} payslip(s) for ${monthDisplay(period)}? Total payable: ${fmtMoney(periodStatus.total_draft_net, periodStatus.currency)}`)) return;
+    setApproving(true);
+    try {
+      const { data } = await api.post("/payroll/approve-month", { period });
+      toast.success(`Approved ${data.finalized} payslip(s) · total net ${fmtMoney(data.total_net, periodStatus.currency)}`);
+      loadPayslips(); loadSummary(); loadPeriodStatus();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+    finally { setApproving(false); }
   };
 
   const finalizeOne = async (ps) => {
     try {
       await api.post(`/payroll/payslips/${ps.id}/finalize`);
       toast.success("Finalized — employee notified");
-      loadPayslips(); loadSummary();
+      loadPayslips(); loadSummary(); loadPeriodStatus();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
   const markPaidOne = async (ps) => {
     try {
       await api.post(`/payroll/payslips/${ps.id}/mark-paid`);
       toast.success("Marked as paid");
-      loadPayslips();
+      loadPayslips(); loadPeriodStatus();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
 
-  const finalizeAll = async () => {
-    const drafts = payslips.filter((p) => p.status === "draft");
-    if (drafts.length === 0) { toast.error("No drafts to finalize"); return; }
-    if (!window.confirm(`Finalize ${drafts.length} draft payslip(s) for ${monthDisplay(period)}? Employees will be emailed.`)) return;
-    for (const d of drafts) {
-      try { await api.post(`/payroll/payslips/${d.id}/finalize`); } catch {}
-    }
-    toast.success(`Finalized ${drafts.length} payslip(s)`);
-    loadPayslips(); loadSummary();
+  const exportCsv = async () => {
+    const url = `${process.env.REACT_APP_BACKEND_URL}/api/payroll/payslips/export.csv?period=${encodeURIComponent(period)}`;
+    try {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${getToken()}` } });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `payslips-${period}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast.success(`Exported ${period} payslips`);
+    } catch { toast.error("Couldn't export CSV"); }
   };
+
+  const exportCsvHandler = exportCsv;
 
   return (
     <div className="p-6 space-y-5 animate-fade-up" data-testid="admin-payroll">
@@ -158,17 +181,55 @@ export default function Payroll() {
                 {runningPayroll ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" strokeWidth={1.5} />}
                 Generate {monthDisplay(period)} draft payslips
               </Button>
-              {payslips.length > 0 && payslips.some((p)=>p.status === "draft") && (
-                <Button onClick={finalizeAll} variant="outline" className="rounded-lg h-11 px-5 border-emerald-200 text-emerald-700 hover:bg-emerald-50" data-testid="finalize-all-btn">
-                  <CheckCircle2 className="h-4 w-4 mr-2" strokeWidth={1.5} /> Finalize all drafts
-                </Button>
-              )}
             </div>
             <p className="text-xs text-slate-500 mt-3">
               Generation creates a draft payslip for every employee with a salary structure. Drafts can be re-run safely; finalized & paid payslips are preserved.
+              <br/>Only <b>Super Admin</b> can approve the monthly total payable.
             </p>
           </div>
-          <PayslipTable payslips={payslips} onFinalize={finalizeOne} onMarkPaid={markPaidOne} onView={setViewing} />
+
+          {/* Super Admin approval banner */}
+          {periodStatus && periodStatus.draft_count > 0 && (
+            <div
+              className={`surface p-6 border-l-4 ${isSuperAdmin ? "border-amber-500" : "border-slate-300"}`}
+              data-testid="approval-banner"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className={`h-10 w-10 rounded-lg ${isSuperAdmin ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"} grid place-items-center shrink-0`}>
+                    <ShieldCheck className="h-5 w-5" strokeWidth={1.5} />
+                  </div>
+                  <div>
+                    <div className="font-display text-lg font-medium text-slate-900">
+                      {periodStatus.draft_count} draft payslip(s) awaiting Super Admin approval
+                    </div>
+                    <div className="text-sm text-slate-600 mt-0.5">
+                      Total payable for <b>{monthDisplay(period)}</b>:&nbsp;
+                      <span className="font-display font-semibold text-slate-900 text-base">{fmtMoney(periodStatus.total_draft_net, periodStatus.currency)}</span>
+                      <span className="text-slate-500 ml-2">net · {fmtMoney(periodStatus.total_draft_gross, periodStatus.currency)} gross</span>
+                    </div>
+                  </div>
+                </div>
+                {isSuperAdmin ? (
+                  <Button
+                    onClick={approveMonth}
+                    disabled={approving}
+                    className="bg-amber-600 hover:bg-amber-700 text-white rounded-lg h-11 px-6"
+                    data-testid="approve-month-btn"
+                  >
+                    {approving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ShieldCheck className="h-4 w-4 mr-2" strokeWidth={1.5} />}
+                    Approve &amp; finalize all
+                  </Button>
+                ) : (
+                  <div className="text-xs text-slate-500 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200">
+                    Only your Super Admin can approve this run
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <PayslipTable payslips={payslips} onFinalize={finalizeOne} onMarkPaid={markPaidOne} onView={setViewing} canApprove={isSuperAdmin} />
         </TabsContent>
 
         {/* STRUCTURES */}
@@ -219,11 +280,14 @@ export default function Payroll() {
 
         {/* PAYSLIPS HISTORY */}
         <TabsContent value="payslips" className="mt-4 space-y-4">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <Input type="month" value={period} onChange={(e)=>setPeriod(e.target.value)} className="h-10 w-56" data-testid="history-period" />
-            <div className="text-sm text-slate-500">{payslips.length} payslip(s) for {monthDisplay(period)}</div>
+            <div className="text-sm text-slate-500 flex-1">{payslips.length} payslip(s) for {monthDisplay(period)}</div>
+            <Button onClick={exportCsv} variant="outline" className="rounded-lg" data-testid="export-payslips-csv">
+              <Download className="h-4 w-4 mr-1.5" strokeWidth={1.5} /> Export CSV
+            </Button>
           </div>
-          <PayslipTable payslips={payslips} onFinalize={finalizeOne} onMarkPaid={markPaidOne} onView={setViewing} />
+          <PayslipTable payslips={payslips} onFinalize={finalizeOne} onMarkPaid={markPaidOne} onView={setViewing} canApprove={isSuperAdmin} />
         </TabsContent>
       </Tabs>
 
@@ -254,7 +318,7 @@ function KpiCard({ label, value, icon: Icon, accent, hint }) {
   );
 }
 
-function PayslipTable({ payslips, onFinalize, onMarkPaid, onView }) {
+function PayslipTable({ payslips, onFinalize, onMarkPaid, onView, canApprove }) {
   return (
     <div className="surface overflow-hidden">
       <table className="w-full text-sm" data-testid="payslip-table">
@@ -287,10 +351,10 @@ function PayslipTable({ payslips, onFinalize, onMarkPaid, onView }) {
                 <td className="px-5 py-3 text-right">
                   <div className="flex justify-end gap-1">
                     <button onClick={()=>onView(p)} className="text-xs font-medium text-slate-600 hover:text-slate-900 px-2 py-1 rounded-md border border-slate-200 hover:bg-slate-50" data-testid={`view-ps-${p.id}`}>View</button>
-                    {p.status === "draft" && (
+                    {canApprove && p.status === "draft" && (
                       <button onClick={()=>onFinalize(p)} className="text-xs font-medium text-emerald-700 px-2 py-1 rounded-md border border-emerald-200 hover:bg-emerald-50" data-testid={`finalize-ps-${p.id}`}>Finalize</button>
                     )}
-                    {p.status === "finalized" && (
+                    {canApprove && p.status === "finalized" && (
                       <button onClick={()=>onMarkPaid(p)} className="text-xs font-medium text-blue-700 px-2 py-1 rounded-md border border-blue-200 hover:bg-blue-50" data-testid={`paid-ps-${p.id}`}>Mark paid</button>
                     )}
                   </div>
@@ -391,6 +455,87 @@ function PreviewStat({ label, value, bold }) {
 
 export function PayslipDetailDialog({ ps }) {
   const c = ps.components;
+  const printPayslip = () => {
+    const w = window.open("", "_blank", "width=720,height=900");
+    if (!w) { toast.error("Allow pop-ups to print the payslip"); return; }
+    const html = `<!doctype html><html><head><meta charset="utf-8"/>
+<title>Payslip · ${ps.user_name} · ${monthDisplay(ps.period)}</title>
+<style>
+  @page { size: A4; margin: 32mm 24mm; }
+  body { font-family: -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif; color: #111827; max-width: 720px; margin: 0 auto; padding: 32px; }
+  h1 { font-size: 22px; margin: 0 0 4px 0; letter-spacing: -0.01em; }
+  .muted { color: #6b7280; font-size: 12px; }
+  .pillbar { display: flex; justify-content: space-between; align-items: center; margin: 24px 0 16px; padding-bottom: 16px; border-bottom: 1px solid #e5e7eb; }
+  .net { font-size: 26px; font-weight: 700; color: #047857; letter-spacing: -0.01em; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+  th, td { padding: 8px 4px; border-bottom: 1px solid #f1f5f9; }
+  th { text-align: left; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; }
+  td.amount { text-align: right; font-variant-numeric: tabular-nums; }
+  .row-totals { background: #f8fafc; font-weight: 600; }
+  .meta { color: #6b7280; font-size: 11px; margin-top: 24px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid; text-transform: capitalize; }
+  .b-finalized { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+  .b-paid { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+  .b-draft { background: #f1f5f9; color: #475569; border-color: #cbd5e1; }
+  .footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #9ca3af; text-align: center; }
+  @media print {
+    .no-print { display: none !important; }
+  }
+</style></head><body>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+    <div>
+      <h1>Payslip</h1>
+      <div class="muted">For pay period <b>${monthDisplay(ps.period)}</b></div>
+    </div>
+    <div style="text-align:right;">
+      <div class="muted">Status</div>
+      <div class="badge b-${ps.status}">${ps.status}</div>
+    </div>
+  </div>
+  <div class="pillbar">
+    <div>
+      <div class="muted">Employee</div>
+      <div style="font-size:16px;font-weight:600;">${ps.user_name}</div>
+      <div class="muted">${ps.designation || ""} · ${ps.employee_code || ""}</div>
+    </div>
+    <div style="text-align:right;">
+      <div class="muted">Net pay</div>
+      <div class="net">${fmtMoney(c.net, c.currency)}</div>
+    </div>
+  </div>
+  <table>
+    <thead><tr><th>Earnings</th><th class="amount">Amount</th></tr></thead>
+    <tbody>
+      <tr><td>Base salary</td><td class="amount">${fmtMoney(c.base_salary, c.currency)}</td></tr>
+      <tr><td>House rent allowance</td><td class="amount">${fmtMoney(c.hra, c.currency)}</td></tr>
+      <tr><td>Transport allowance</td><td class="amount">${fmtMoney(c.transport, c.currency)}</td></tr>
+      <tr><td>Special allowance</td><td class="amount">${fmtMoney(c.special, c.currency)}</td></tr>
+      <tr class="row-totals"><td>Gross earnings</td><td class="amount">${fmtMoney(c.gross, c.currency)}</td></tr>
+    </tbody>
+  </table>
+  <table>
+    <thead><tr><th>Deductions</th><th class="amount">Amount</th></tr></thead>
+    <tbody>
+      <tr><td>Provident fund (${c.pf_pct}% of base)</td><td class="amount">−${fmtMoney(c.pf_amount, c.currency)}</td></tr>
+      <tr><td>Income tax (${c.tax_pct}%)</td><td class="amount">−${fmtMoney(c.tax_amount, c.currency)}</td></tr>
+      <tr class="row-totals"><td>Total deductions</td><td class="amount">−${fmtMoney(c.total_deductions, c.currency)}</td></tr>
+    </tbody>
+  </table>
+  <div class="meta">
+    Generated ${new Date(ps.generated_at).toLocaleString()}
+    ${ps.finalized_at ? ` · Approved ${new Date(ps.finalized_at).toLocaleString()}${ps.approved_by ? ` by ${ps.approved_by}` : ''}` : ''}
+    ${ps.paid_at ? ` · Paid ${new Date(ps.paid_at).toLocaleString()}` : ''}
+  </div>
+  <div class="footer">This is a system-generated payslip. No signature required.</div>
+  <div class="no-print" style="margin-top:32px;text-align:center;">
+    <button onclick="window.print()" style="padding:10px 20px;background:#0f172a;color:#fff;border:0;border-radius:8px;font-weight:600;cursor:pointer;">Print / Save as PDF</button>
+  </div>
+  <script>setTimeout(function(){ window.print(); }, 400);</script>
+</body></html>`;
+    w.document.write(html);
+    w.document.close();
+  };
+
   return (
     <DialogContent className="rounded-2xl max-w-lg" data-testid="payslip-detail">
       <DialogHeader>
@@ -414,8 +559,19 @@ export function PayslipDetailDialog({ ps }) {
           <div className="text-xs uppercase tracking-widest font-semibold text-slate-400">Net pay</div>
           <div className="font-display text-3xl font-semibold text-emerald-700">{fmtMoney(c.net, c.currency)}</div>
         </div>
-        <div className="text-xs text-slate-400">Status: <b className="text-slate-700 capitalize">{ps.status}</b> · Generated {new Date(ps.generated_at).toLocaleDateString()}{ps.finalized_at && ` · Finalized ${new Date(ps.finalized_at).toLocaleDateString()}`}{ps.paid_at && ` · Paid ${new Date(ps.paid_at).toLocaleDateString()}`}</div>
+        <div className="text-xs text-slate-400">Status: <b className="text-slate-700 capitalize">{ps.status}</b> · Generated {new Date(ps.generated_at).toLocaleDateString()}{ps.finalized_at && ` · Approved ${new Date(ps.finalized_at).toLocaleDateString()}${ps.approved_by ? ` by ${ps.approved_by}` : ''}`}{ps.paid_at && ` · Paid ${new Date(ps.paid_at).toLocaleDateString()}`}</div>
       </div>
+      <DialogFooter>
+        <Button
+          onClick={printPayslip}
+          disabled={ps.status === "draft"}
+          className="bg-slate-900 hover:bg-slate-800 text-white"
+          data-testid="download-payslip-pdf"
+        >
+          <Printer className="h-4 w-4 mr-1.5" strokeWidth={1.5} />
+          {ps.status === "draft" ? "Available after approval" : "Download PDF"}
+        </Button>
+      </DialogFooter>
     </DialogContent>
   );
 }
