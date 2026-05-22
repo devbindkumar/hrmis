@@ -1,0 +1,208 @@
+import { useEffect, useState } from "react";
+import api, { formatApiError } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Search, Plus, Loader2, Mail } from "lucide-react";
+import { toast } from "sonner";
+import StatusPill from "@/components/StatusPill";
+import { useAuth } from "@/contexts/AuthContext";
+
+const ROLE_LABELS = { super_admin: "Super Admin", hr: "HR", manager: "Manager", employee: "Employee" };
+
+export default function Employees() {
+  const { user } = useAuth();
+  const [list, setList] = useState([]);
+  const [q, setQ] = useState("");
+  const [dept, setDept] = useState("all");
+  const [status, setStatus] = useState("all");
+  const [departments, setDepartments] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    const { data } = await api.get("/employees", { params: { q: q || undefined, department: dept, status } });
+    setList(data);
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [q, dept, status]);
+  useEffect(() => { api.get("/departments").then((r) => setDepartments(r.data)); }, []);
+
+  const canCreate = ["super_admin", "hr"].includes(user?.role);
+
+  return (
+    <div className="p-6 space-y-5 animate-fade-up" data-testid="employees-page">
+      <div className="flex items-end justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-900">Employees</h1>
+          <p className="text-sm text-slate-500 mt-1">{list.length} people · across {departments.length} departments</p>
+        </div>
+        {canCreate && (
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-slate-900 hover:bg-slate-800 text-white rounded-lg" data-testid="add-employee-btn">
+                <Plus className="h-4 w-4 mr-1.5" strokeWidth={1.5} /> Add employee
+              </Button>
+            </DialogTrigger>
+            <NewEmployeeDialog departments={departments} onCreated={() => { setOpen(false); load(); }} />
+          </Dialog>
+        )}
+      </div>
+
+      {/* Filters */}
+      <div className="surface p-4 flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[220px]">
+          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={1.5} />
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search name, email or code…"
+            className="pl-9 h-10 rounded-lg border-slate-200"
+            data-testid="employee-search"
+          />
+        </div>
+        <Select value={dept} onValueChange={setDept}>
+          <SelectTrigger className="w-44 h-10 rounded-lg" data-testid="filter-dept"><SelectValue placeholder="Department" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All departments</SelectItem>
+            {departments.map((d) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={status} onValueChange={setStatus}>
+          <SelectTrigger className="w-36 h-10 rounded-lg" data-testid="filter-status"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All status</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="inactive">Inactive</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Table */}
+      <div className="surface overflow-hidden" data-testid="employee-directory-table">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+              <th className="text-left font-semibold px-5 py-3">Person</th>
+              <th className="text-left font-semibold px-5 py-3">Code</th>
+              <th className="text-left font-semibold px-5 py-3">Department</th>
+              <th className="text-left font-semibold px-5 py-3">Role</th>
+              <th className="text-left font-semibold px-5 py-3">Location</th>
+              <th className="text-left font-semibold px-5 py-3">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan="6" className="px-5 py-12 text-center text-slate-400"><Loader2 className="h-5 w-5 animate-spin inline" /></td></tr>
+            ) : list.length === 0 ? (
+              <tr><td colSpan="6" className="px-5 py-12 text-center text-slate-400">No people found.</td></tr>
+            ) : list.map((e) => (
+              <tr key={e.id} className="border-t border-slate-100 hover:bg-slate-50/60 transition-colors">
+                <td className="px-5 py-3">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-9 w-9">
+                      <AvatarImage src={e.avatar_url} alt={e.name} />
+                      <AvatarFallback className="text-xs bg-slate-100 text-slate-700">{e.name.split(" ").map(p=>p[0]).slice(0,2).join("")}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <div className="font-medium text-slate-900">{e.name}</div>
+                      <div className="text-xs text-slate-500 flex items-center gap-1"><Mail className="h-3 w-3" />{e.email}</div>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-5 py-3 text-slate-600 font-mono text-xs">{e.employee_code}</td>
+                <td className="px-5 py-3">
+                  <div className="text-slate-800">{e.department}</div>
+                  <div className="text-xs text-slate-500">{e.designation}</div>
+                </td>
+                <td className="px-5 py-3"><span className="inline-block px-2 py-0.5 rounded-md text-xs bg-slate-100 text-slate-700 border border-slate-200">{ROLE_LABELS[e.role] || e.role}</span></td>
+                <td className="px-5 py-3 text-slate-600">{e.location}</td>
+                <td className="px-5 py-3"><StatusPill status={e.status === 'active' ? 'active' : 'absent'} label={e.status === 'active' ? 'Active' : 'Inactive'} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function NewEmployeeDialog({ departments, onCreated }) {
+  const [form, setForm] = useState({ name: "", email: "", department: "", designation: "", role: "employee", location: "HQ", password: "Demo@123" });
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!form.name || !form.email || !form.department || !form.designation) {
+      toast.error("Fill all required fields"); return;
+    }
+    setBusy(true);
+    try {
+      await api.post("/employees", form);
+      toast.success("Employee added");
+      onCreated();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail));
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <DialogContent className="rounded-2xl" data-testid="new-employee-dialog">
+      <DialogHeader>
+        <DialogTitle className="font-display">Add new employee</DialogTitle>
+      </DialogHeader>
+      <div className="grid grid-cols-2 gap-4 py-2">
+        <div className="col-span-2">
+          <Label>Full name</Label>
+          <Input value={form.name} onChange={(e)=>setForm({...form, name: e.target.value})} className="mt-1.5" data-testid="ne-name" />
+        </div>
+        <div className="col-span-2">
+          <Label>Work email</Label>
+          <Input value={form.email} onChange={(e)=>setForm({...form, email: e.target.value})} className="mt-1.5" data-testid="ne-email" />
+        </div>
+        <div>
+          <Label>Department</Label>
+          <Select value={form.department} onValueChange={(v)=>setForm({...form, department: v})}>
+            <SelectTrigger className="mt-1.5" data-testid="ne-dept"><SelectValue placeholder="Select" /></SelectTrigger>
+            <SelectContent>
+              {departments.map((d)=> <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label>Role</Label>
+          <Select value={form.role} onValueChange={(v)=>setForm({...form, role: v})}>
+            <SelectTrigger className="mt-1.5" data-testid="ne-role"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="employee">Employee</SelectItem>
+              <SelectItem value="manager">Manager</SelectItem>
+              <SelectItem value="hr">HR</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label>Designation</Label>
+          <Input value={form.designation} onChange={(e)=>setForm({...form, designation: e.target.value})} className="mt-1.5" data-testid="ne-desig" />
+        </div>
+        <div>
+          <Label>Location</Label>
+          <Input value={form.location} onChange={(e)=>setForm({...form, location: e.target.value})} className="mt-1.5" />
+        </div>
+        <div className="col-span-2">
+          <Label>Temporary password</Label>
+          <Input value={form.password} onChange={(e)=>setForm({...form, password: e.target.value})} className="mt-1.5" />
+          <p className="text-xs text-slate-500 mt-1">A welcome email with these credentials will be sent to the employee.</p>
+        </div>
+      </div>
+      <DialogFooter>
+        <Button onClick={submit} disabled={busy} className="bg-slate-900 hover:bg-slate-800 text-white" data-testid="ne-submit">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create"}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  );
+}

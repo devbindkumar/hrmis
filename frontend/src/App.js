@@ -1,53 +1,81 @@
-import { useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Toaster } from "sonner";
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
+import { AuthProvider } from "@/contexts/AuthContext";
+import ProtectedRoute, { RoleRedirect } from "@/components/ProtectedRoute";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+import Login from "@/pages/Login";
+import AdminLayout from "@/components/layouts/AdminLayout";
+import EmployeeLayout from "@/components/layouts/EmployeeLayout";
 
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
+import AdminOverview from "@/pages/admin/Overview";
+import AdminEmployees from "@/pages/admin/Employees";
+import AdminAttendance from "@/pages/admin/Attendance";
+import AdminLeave from "@/pages/admin/Leave";
+import AdminWFH from "@/pages/admin/WFH";
+import AdminAnnouncements from "@/pages/admin/Announcements";
+import AdminReports from "@/pages/admin/Reports";
+import AdminSettings from "@/pages/admin/Settings";
 
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
+import EmployeeToday from "@/pages/employee/Today";
+import MyLeave from "@/pages/employee/MyLeave";
+import MyWFH from "@/pages/employee/MyWFH";
+import Profile from "@/pages/employee/Profile";
 
-  return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
-};
+import Chat from "@/pages/Chat";
+import Meetings from "@/pages/Meetings";
 
 function App() {
   return (
-    <div className="App">
+    <AuthProvider>
       <BrowserRouter>
+        <Toaster position="top-right" richColors closeButton />
         <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
+          <Route path="/" element={<RoleRedirect />} />
+          <Route path="/login" element={<Login />} />
+
+          {/* Admin */}
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute allow="admin">
+                <AdminLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<AdminOverview />} />
+            <Route path="employees" element={<AdminEmployees />} />
+            <Route path="attendance" element={<AdminAttendance />} />
+            <Route path="leave" element={<AdminLeave />} />
+            <Route path="wfh" element={<AdminWFH />} />
+            <Route path="meetings" element={<div className="p-6"><Meetings /></div>} />
+            <Route path="chat" element={<Chat />} />
+            <Route path="announcements" element={<AdminAnnouncements />} />
+            <Route path="reports" element={<AdminReports />} />
+            <Route path="settings" element={<AdminSettings />} />
           </Route>
+
+          {/* Employee */}
+          <Route
+            path="/employee"
+            element={
+              <ProtectedRoute allow="employee">
+                <EmployeeLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<EmployeeToday />} />
+            <Route path="leave" element={<MyLeave />} />
+            <Route path="wfh" element={<MyWFH />} />
+            <Route path="meetings" element={<Meetings />} />
+            <Route path="chat" element={<Chat />} />
+            <Route path="profile" element={<Profile />} />
+          </Route>
+
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
-    </div>
+    </AuthProvider>
   );
 }
 
