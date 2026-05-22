@@ -2,7 +2,7 @@ import { NavLink, Outlet, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   LayoutDashboard, Users, Clock, CalendarDays, Home, Video,
-  MessagesSquare, Megaphone, BarChart3, Settings, LogOut, Building2, Bell, Briefcase,
+  MessagesSquare, Megaphone, BarChart3, Settings, LogOut, Building2, Bell, Briefcase, Network,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 const NAV = [
   { to: "/admin", label: "Overview", icon: LayoutDashboard, end: true },
   { to: "/admin/employees", label: "Employees", icon: Users },
+  { to: "/admin/org", label: "Org chart", icon: Network },
   { to: "/admin/attendance", label: "Attendance", icon: Clock },
   { to: "/admin/leave", label: "Leave", icon: CalendarDays },
   { to: "/admin/wfh", label: "Work from home", icon: Home },

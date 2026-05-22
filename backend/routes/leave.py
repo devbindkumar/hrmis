@@ -45,11 +45,17 @@ async def my_requests(user: dict = Depends(get_current_user)):
 
 
 @router.get("/all")
-async def all_requests(admin: dict = Depends(require_roles("super_admin", "hr", "manager")), status: Optional[str] = None):
+async def all_requests(
+    user: dict = Depends(require_roles("super_admin", "hr", "manager")),
+    status: Optional[str] = None,
+    scope: Optional[str] = None,  # "team" -> only direct reports of `user`
+):
     db = get_db()
     q: dict = {}
     if status and status != "all":
         q["status"] = status
+    if scope == "team":
+        q["manager_user_id"] = user["id"]
     items = await db.leave_requests.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
     return items
 
@@ -87,6 +93,16 @@ async def apply_leave(body: LeaveApply, user: dict = Depends(get_current_user)):
     if (balance["total"] - balance["used"]) < days:
         raise HTTPException(status_code=400, detail="Not enough balance")
 
+    # Resolve direct manager so the request is routed first to them
+    emp = await db.employees.find_one({"user_id": user["id"]}, {"_id": 0, "manager_id": 1})
+    manager_user_id = None
+    manager_record = None
+    if emp and emp.get("manager_id"):
+        manager_emp = await db.employees.find_one({"id": emp["manager_id"]}, {"_id": 0, "user_id": 1, "name": 1})
+        if manager_emp:
+            manager_user_id = manager_emp["user_id"]
+            manager_record = manager_emp
+
     doc = {
         "id": str(uuid.uuid4()),
         "user_id": user["id"],
@@ -97,16 +113,43 @@ async def apply_leave(body: LeaveApply, user: dict = Depends(get_current_user)):
         "days": days,
         "reason": body.reason,
         "status": "pending",
+        "manager_user_id": manager_user_id,
+        "manager_name": manager_record["name"] if manager_record else None,
         "decision_note": "",
         "decided_by": None,
         "decided_at": None,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.leave_requests.insert_one(doc)
-    # notify admins
+
+    # Notify manager personally if one is assigned, otherwise notify admin pool
+    if manager_user_id:
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": manager_user_id,
+            "type": "leave_request",
+            "title": "New leave request",
+            "body": f"{user['name']} requested {days}d {body.leave_type} ({body.start_date} → {body.end_date})",
+            "read": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        manager_user = await db.users.find_one({"id": manager_user_id}, {"_id": 0})
+        if manager_user:
+            await send_email(
+                manager_user["email"],
+                f"Leave request from {user['name']}",
+                render(
+                    "Leave request needs your decision",
+                    f"<p>Hi {manager_user['name']},</p>"
+                    f"<p><b>{user['name']}</b> requested <b>{days} day(s)</b> of <b>{body.leave_type}</b> leave "
+                    f"from <b>{body.start_date}</b> to <b>{body.end_date}</b>.</p>"
+                    f"<p><i>Reason:</i> {body.reason}</p>",
+                ),
+            )
+    # Always copy admins/HR in the notification feed so they have visibility
     await db.notifications.insert_one({
         "id": str(uuid.uuid4()),
-        "user_id": "admin",  # broadcast to admin/hr
+        "user_id": "admin",
         "audience": "admin",
         "type": "leave_request",
         "title": "New leave request",

@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Search, Plus, Loader2, Mail } from "lucide-react";
+import { Search, Plus, Loader2, Mail, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import StatusPill from "@/components/StatusPill";
 import { useAuth } from "@/contexts/AuthContext";
@@ -21,6 +21,7 @@ export default function Employees() {
   const [status, setStatus] = useState("all");
   const [departments, setDepartments] = useState([]);
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
@@ -34,6 +35,7 @@ export default function Employees() {
   useEffect(() => { api.get("/departments").then((r) => setDepartments(r.data)); }, []);
 
   const canCreate = ["super_admin", "hr"].includes(user?.role);
+  const canEdit = ["super_admin", "hr", "manager"].includes(user?.role);
 
   return (
     <div className="p-6 space-y-5 animate-fade-up" data-testid="employees-page">
@@ -95,13 +97,14 @@ export default function Employees() {
               <th className="text-left font-semibold px-5 py-3">Reports to</th>
               <th className="text-left font-semibold px-5 py-3">Location</th>
               <th className="text-left font-semibold px-5 py-3">Status</th>
+              <th className="text-right font-semibold px-5 py-3 w-24">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan="7" className="px-5 py-12 text-center text-slate-400"><Loader2 className="h-5 w-5 animate-spin inline" /></td></tr>
+              <tr><td colSpan="8" className="px-5 py-12 text-center text-slate-400"><Loader2 className="h-5 w-5 animate-spin inline" /></td></tr>
             ) : list.length === 0 ? (
-              <tr><td colSpan="7" className="px-5 py-12 text-center text-slate-400">No people found.</td></tr>
+              <tr><td colSpan="8" className="px-5 py-12 text-center text-slate-400">No people found.</td></tr>
             ) : list.map((e) => (
               <tr key={e.id} className="border-t border-slate-100 hover:bg-slate-50/60 transition-colors">
                 <td className="px-5 py-3">
@@ -134,12 +137,137 @@ export default function Employees() {
                 </td>
                 <td className="px-5 py-3 text-slate-600">{e.location}</td>
                 <td className="px-5 py-3"><StatusPill status={e.status === 'active' ? 'active' : 'absent'} label={e.status === 'active' ? 'Active' : 'Inactive'} /></td>
+                <td className="px-5 py-3 text-right">
+                  {canEdit && (
+                    <button
+                      onClick={()=>setEditing(e)}
+                      className="text-slate-400 hover:text-slate-900 inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md border border-slate-200 hover:bg-slate-50"
+                      data-testid={`edit-emp-${e.id}`}
+                    >
+                      <Pencil className="h-3 w-3" strokeWidth={1.5} /> Edit
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {/* Edit employee dialog */}
+      <Dialog open={!!editing} onOpenChange={(o)=>{ if(!o) setEditing(null); }}>
+        {editing && (
+          <EditEmployeeDialog
+            employee={editing}
+            departments={departments}
+            canChangeRole={["super_admin","hr"].includes(user?.role)}
+            onSaved={() => { setEditing(null); load(); }}
+          />
+        )}
+      </Dialog>
     </div>
+  );
+}
+
+function EditEmployeeDialog({ employee, departments, canChangeRole, onSaved }) {
+  const [form, setForm] = useState({
+    name: employee.name || "",
+    department: employee.department || "",
+    designation: employee.designation || "",
+    location: employee.location || "",
+    phone: employee.phone || "",
+    manager_id: employee.manager_id || "",
+    status: employee.status || "active",
+  });
+  const [busy, setBusy] = useState(false);
+  const [managers, setManagers] = useState([]);
+
+  useEffect(() => {
+    api.get("/employees/managers").then((r) => setManagers(r.data.filter((m) => m.id !== employee.id)));
+  }, [employee.id]);
+
+  const save = async () => {
+    if (!form.name || !form.department || !form.designation) {
+      toast.error("Name, department and designation are required"); return;
+    }
+    setBusy(true);
+    try {
+      const payload = { ...form, manager_id: form.manager_id || null };
+      await api.patch(`/employees/${employee.id}`, payload);
+      toast.success("Saved");
+      onSaved();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail));
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <DialogContent className="rounded-2xl max-w-2xl" data-testid="edit-employee-dialog">
+      <DialogHeader>
+        <DialogTitle className="font-display">Edit {employee.name}</DialogTitle>
+      </DialogHeader>
+      <div className="grid grid-cols-2 gap-4 py-2">
+        <div className="col-span-2">
+          <Label>Full name</Label>
+          <Input value={form.name} onChange={(e)=>setForm({...form, name: e.target.value})} className="mt-1.5" data-testid="ee-name" />
+        </div>
+        <div>
+          <Label>Department</Label>
+          <Select value={form.department} onValueChange={(v)=>setForm({...form, department: v})}>
+            <SelectTrigger className="mt-1.5" data-testid="ee-dept"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {departments.map((d)=> <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label>Designation</Label>
+          <Input value={form.designation} onChange={(e)=>setForm({...form, designation: e.target.value})} className="mt-1.5" data-testid="ee-desig" />
+        </div>
+        <div>
+          <Label>Location</Label>
+          <Input value={form.location} onChange={(e)=>setForm({...form, location: e.target.value})} className="mt-1.5" />
+        </div>
+        <div>
+          <Label>Phone</Label>
+          <Input value={form.phone} onChange={(e)=>setForm({...form, phone: e.target.value})} className="mt-1.5" />
+        </div>
+        <div className="col-span-2">
+          <Label>Reports to</Label>
+          <Select value={form.manager_id || "none"} onValueChange={(v)=>setForm({...form, manager_id: v === "none" ? "" : v})}>
+            <SelectTrigger className="mt-1.5" data-testid="ee-manager"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No manager (reports directly to leadership)</SelectItem>
+              {managers.map((m)=> (
+                <SelectItem key={m.id} value={m.id}>
+                  <span className="flex items-center gap-2">
+                    <span className="font-medium">{m.name}</span>
+                    <span className="text-xs text-slate-500">· {m.designation}</span>
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {canChangeRole && (
+          <div className="col-span-2">
+            <Label>Status</Label>
+            <Select value={form.status} onValueChange={(v)=>setForm({...form, status: v})}>
+              <SelectTrigger className="mt-1.5" data-testid="ee-status"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive (revokes access)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </div>
+      <DialogFooter>
+        <Button onClick={save} disabled={busy} className="bg-slate-900 hover:bg-slate-800 text-white" data-testid="ee-save">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save changes"}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
   );
 }
 

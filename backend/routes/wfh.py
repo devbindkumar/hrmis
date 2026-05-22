@@ -29,11 +29,17 @@ async def my_wfh(user: dict = Depends(get_current_user)):
 
 
 @router.get("/all")
-async def all_wfh(admin: dict = Depends(require_roles("super_admin", "hr", "manager")), status: Optional[str] = None):
+async def all_wfh(
+    user: dict = Depends(require_roles("super_admin", "hr", "manager")),
+    status: Optional[str] = None,
+    scope: Optional[str] = None,
+):
     db = get_db()
     q: dict = {}
     if status and status != "all":
         q["status"] = status
+    if scope == "team":
+        q["manager_user_id"] = user["id"]
     items = await db.wfh_requests.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
     return items
 
@@ -52,6 +58,17 @@ async def apply_wfh(body: WFHApply, user: dict = Depends(get_current_user)):
     db = get_db()
     if await db.wfh_requests.find_one({"user_id": user["id"], "date": body.date}):
         raise HTTPException(status_code=400, detail="You already have a WFH request for that date")
+
+    # Resolve direct manager
+    emp = await db.employees.find_one({"user_id": user["id"]}, {"_id": 0, "manager_id": 1})
+    manager_user_id = None
+    manager_record = None
+    if emp and emp.get("manager_id"):
+        manager_emp = await db.employees.find_one({"id": emp["manager_id"]}, {"_id": 0, "user_id": 1, "name": 1})
+        if manager_emp:
+            manager_user_id = manager_emp["user_id"]
+            manager_record = manager_emp
+
     doc = {
         "id": str(uuid.uuid4()),
         "user_id": user["id"],
@@ -59,12 +76,37 @@ async def apply_wfh(body: WFHApply, user: dict = Depends(get_current_user)):
         "date": body.date,
         "reason": body.reason,
         "status": "pending",
+        "manager_user_id": manager_user_id,
+        "manager_name": manager_record["name"] if manager_record else None,
         "decision_note": "",
         "decided_by": None,
         "decided_at": None,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.wfh_requests.insert_one(doc)
+
+    if manager_user_id:
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": manager_user_id,
+            "type": "wfh_request",
+            "title": "New WFH request",
+            "body": f"{user['name']} requested WFH on {body.date}",
+            "read": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        manager_user = await db.users.find_one({"id": manager_user_id}, {"_id": 0})
+        if manager_user:
+            await send_email(
+                manager_user["email"],
+                f"WFH request from {user['name']}",
+                render(
+                    "WFH request needs your decision",
+                    f"<p>Hi {manager_user['name']},</p>"
+                    f"<p><b>{user['name']}</b> requested work-from-home on <b>{body.date}</b>.</p>"
+                    f"<p><i>Reason:</i> {body.reason}</p>",
+                ),
+            )
     await db.notifications.insert_one({
         "id": str(uuid.uuid4()),
         "user_id": "admin",

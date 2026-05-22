@@ -7,8 +7,14 @@ import { toast } from "sonner";
 import { Check, X, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function AdminLeave() {
+  const { user } = useAuth();
+  const isManagerOnly = user?.role === "manager";
+  const [teamOnly, setTeamOnly] = useState(isManagerOnly);
   const [tab, setTab] = useState("pending");
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -18,12 +24,12 @@ export default function AdminLeave() {
 
   const load = async () => {
     setLoading(true);
-    const { data } = await api.get("/leave/all", { params: { status: tab } });
+    const { data } = await api.get("/leave/all", { params: { status: tab, scope: teamOnly ? "team" : undefined } });
     setList(data);
     setLoading(false);
   };
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [tab]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [tab, teamOnly]);
 
   const decide = async () => {
     try {
@@ -39,9 +45,23 @@ export default function AdminLeave() {
 
   return (
     <div className="p-6 space-y-5 animate-fade-up" data-testid="admin-leave">
-      <div>
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-900">Leave management</h1>
-        <p className="text-sm text-slate-500 mt-1">Approve, reject, and track leave requests across teams.</p>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-900">Leave management</h1>
+          <p className="text-sm text-slate-500 mt-1">Approve, reject, and track leave requests across teams.</p>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white">
+          <Switch
+            checked={teamOnly}
+            onCheckedChange={setTeamOnly}
+            disabled={isManagerOnly}
+            id="team-only-leave"
+            data-testid="leave-team-toggle"
+          />
+          <Label htmlFor="team-only-leave" className="text-sm font-medium text-slate-700 cursor-pointer">
+            My team only
+          </Label>
+        </div>
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
