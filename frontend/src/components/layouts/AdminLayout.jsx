@@ -2,7 +2,7 @@ import { NavLink, Outlet, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   LayoutDashboard, Users, Clock, CalendarDays, Home, Video,
-  MessagesSquare, Megaphone, BarChart3, Settings, LogOut, Building2, Bell, Briefcase, Network, Globe2,
+  MessagesSquare, Megaphone, BarChart3, Settings, LogOut, Building2, Bell, Briefcase, Network, Globe2, Banknote,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
@@ -23,6 +23,7 @@ const NAV = [
   { to: "/admin/meetings", label: "Meetings", icon: Video },
   { to: "/admin/chat", label: "Chat", icon: MessagesSquare },
   { to: "/admin/announcements", label: "Announcements", icon: Megaphone },
+  { to: "/admin/payroll", label: "Payroll", icon: Banknote },
   { to: "/admin/jobs", label: "Jobs", icon: Briefcase },
   { to: "/admin/reports", label: "Reports", icon: BarChart3 },
   { to: "/admin/companies", label: "Companies", icon: Globe2 },

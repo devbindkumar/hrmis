@@ -31,7 +31,6 @@ async def ensure_indexes():
 
 
 async def _ensure_default_company(db) -> str:
-    """Create the default Acme company if missing and backfill company_id on existing data."""
     default = await db.companies.find_one({"slug": "acme"})
     if not default:
         default_id = str(uuid.uuid4())
@@ -103,9 +102,10 @@ async def seed_admin_and_demo():
     # ---- demo employees ----
     seed_jobs = await db.jobs.count_documents({}) == 0
     if await db.users.count_documents({"role": {"$ne": "super_admin"}}) > 0:
-        # Even if users already exist, ensure jobs are seeded so the careers page has content
+        # Even if users already exist, ensure jobs and salary structures are present
         if seed_jobs:
             await _seed_sample_jobs(db)
+        await _seed_sample_salaries(db, default_company_id)
         return  # demo already seeded
 
     departments = [
@@ -196,6 +196,8 @@ async def seed_admin_and_demo():
 
     # Sample jobs (public careers page)
     await _seed_sample_jobs(db)
+    # Sample salary structures
+    await _seed_sample_salaries(db, default_company_id)
 
     # Sample announcement
     await db.announcements.insert_one({
@@ -259,4 +261,33 @@ async def _seed_sample_jobs(db):
             "applicant_count": 0,
             "created_by": "Sarah Chen",
             "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+
+async def _seed_sample_salaries(db, company_id: str):
+    """Idempotent seed of salary structures for demo users in the default company."""
+    role_pay = {
+        "super_admin": {"base": 14000, "hra": 2800, "transport": 500, "special": 1200, "pf_pct": 6, "tax_pct": 18},
+        "manager":     {"base": 11000, "hra": 2200, "transport": 400, "special": 900,  "pf_pct": 6, "tax_pct": 15},
+        "hr":          {"base":  9500, "hra": 1900, "transport": 400, "special": 700,  "pf_pct": 6, "tax_pct": 12},
+        "employee":    {"base":  7500, "hra": 1500, "transport": 350, "special": 500,  "pf_pct": 6, "tax_pct": 10},
+    }
+    users = await db.users.find({"company_id": company_id}, {"_id": 0, "id": 1, "role": 1}).to_list(500)
+    for u in users:
+        existing = await db.salary_structures.find_one({"user_id": u["id"], "company_id": company_id})
+        if existing:
+            continue
+        pay = role_pay.get(u.get("role"), role_pay["employee"])
+        now = datetime.now(timezone.utc).isoformat()
+        await db.salary_structures.insert_one({
+            "id": str(uuid.uuid4()),
+            "company_id": company_id,
+            "user_id": u["id"],
+            "base_salary": pay["base"],
+            "allowances": {"hra": pay["hra"], "transport": pay["transport"], "special": pay["special"]},
+            "pf_pct": pay["pf_pct"],
+            "tax_pct": pay["tax_pct"],
+            "currency": "USD",
+            "created_at": now,
+            "updated_at": now,
         })

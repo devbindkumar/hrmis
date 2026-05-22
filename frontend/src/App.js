@@ -19,11 +19,13 @@ import AdminSettings from "@/pages/admin/Settings";
 import AdminJobs from "@/pages/admin/Jobs";
 import AdminOrgChart from "@/pages/admin/OrgChart";
 import AdminCompanies from "@/pages/admin/Companies";
+import AdminPayroll from "@/pages/admin/Payroll";
 
 import EmployeeToday from "@/pages/employee/Today";
 import MyLeave from "@/pages/employee/MyLeave";
 import MyWFH from "@/pages/employee/MyWFH";
 import Profile from "@/pages/employee/Profile";
+import MyPayslips from "@/pages/employee/MyPayslips";
 
 import Chat from "@/pages/Chat";
 import Meetings from "@/pages/Meetings";
@@ -63,6 +65,7 @@ function App() {
             <Route path="chat" element={<Chat />} />
             <Route path="announcements" element={<AdminAnnouncements />} />
             <Route path="reports" element={<AdminReports />} />
+            <Route path="payroll" element={<AdminPayroll />} />
             <Route path="jobs" element={<AdminJobs />} />
             <Route path="companies" element={<AdminCompanies />} />
             <Route path="settings" element={<AdminSettings />} />
@@ -80,6 +83,7 @@ function App() {
             <Route index element={<EmployeeToday />} />
             <Route path="leave" element={<MyLeave />} />
             <Route path="wfh" element={<MyWFH />} />
+            <Route path="payslips" element={<MyPayslips />} />
             <Route path="meetings" element={<Meetings />} />
             <Route path="chat" element={<Chat />} />
             <Route path="profile" element={<Profile />} />

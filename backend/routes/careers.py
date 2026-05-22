@@ -12,6 +12,7 @@ from auth import get_current_user, require_roles
 from db import get_db
 from email_service import send_email, render
 from storage import put_object, get_object, APP_NAME
+from tenant import company_id_of
 
 # Public router for the careers site (no auth)
 public_router = APIRouter(prefix="/api/careers", tags=["careers-public"])
