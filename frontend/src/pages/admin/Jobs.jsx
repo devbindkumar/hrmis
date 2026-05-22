@@ -7,9 +7,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Loader2, Briefcase, MapPin, Clock, Users2, Trash2, ExternalLink, Mail, Phone, Linkedin, Globe } from "lucide-react";
+import { Plus, Loader2, Briefcase, MapPin, Clock, Users2, Trash2, ExternalLink, Mail, Phone, Linkedin, Globe, Download, FileText } from "lucide-react";
 import { toast } from "sonner";
 import StatusPill from "@/components/StatusPill";
+import { getToken } from "@/lib/api";
 
 const STAGE_COLORS = {
   new: "bg-blue-50 text-blue-700 border-blue-200",
@@ -50,10 +51,38 @@ export default function AdminJobs() {
   };
 
   const moveStage = async (a, stage) => {
-    await api.patch(`/jobs/applications/${a.id}`, { stage });
-    toast.success("Stage updated");
+    await api.patch(`/jobs/applications/${a.id}`, { stage, notify_candidate: true });
+    toast.success("Stage updated — candidate notified");
     loadApps();
     if (viewing?.id === a.id) setViewing({ ...viewing, stage });
+  };
+
+  const exportCsv = async () => {
+    const url = `${process.env.REACT_APP_BACKEND_URL}/api/jobs/applications/export.csv?job_id=${encodeURIComponent(selectedJob)}&stage=${encodeURIComponent(stageFilter)}`;
+    try {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${getToken()}` } });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `applicants-${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast.success("Exported");
+    } catch (e) { toast.error("Couldn't export CSV"); }
+  };
+
+  const downloadResume = async (a) => {
+    try {
+      const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/jobs/applications/${a.id}/resume`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error("Couldn't fetch");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (e) { toast.error("Couldn't download resume"); }
   };
 
   const careersUrl = `${window.location.origin}/careers`;
@@ -138,7 +167,10 @@ export default function AdminJobs() {
                 {STAGES.map((s) => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
               </SelectContent>
             </Select>
-            <div className="text-sm text-slate-500">{apps.length} applicants</div>
+            <div className="text-sm text-slate-500 flex-1">{apps.length} applicants</div>
+            <Button variant="outline" onClick={exportCsv} className="rounded-lg" data-testid="export-applicants-csv">
+              <Download className="h-4 w-4 mr-1.5" /> Export CSV
+            </Button>
           </div>
 
           <div className="surface overflow-hidden">
@@ -168,6 +200,11 @@ export default function AdminJobs() {
                         </span>
                       </td>
                       <td className="px-5 py-3 text-right">
+                        {a.resume_path && (
+                          <Button size="sm" variant="ghost" className="h-8 mr-1 text-slate-600" onClick={()=>downloadResume(a)} title="Download resume" data-testid={`dl-resume-${a.id}`}>
+                            <FileText className="h-4 w-4" />
+                          </Button>
+                        )}
                         <Button size="sm" variant="outline" className="h-8 rounded-md" onClick={()=>setViewing(a)} data-testid={`view-app-${a.id}`}>Review</Button>
                       </td>
                     </tr>
@@ -198,6 +235,16 @@ export default function AdminJobs() {
                   <div className="text-xs uppercase tracking-widest font-semibold text-slate-500 mb-2">Cover letter</div>
                   <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line bg-slate-50 rounded-lg p-4 border border-slate-100">{viewing.cover_letter}</p>
                 </div>
+                {viewing.resume_path && (
+                  <div>
+                    <div className="text-xs uppercase tracking-widest font-semibold text-slate-500 mb-2">Resume</div>
+                    <button onClick={()=>downloadResume(viewing)} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 hover:border-slate-300 px-3 py-2 hover:bg-slate-50 text-sm" data-testid="dialog-dl-resume">
+                      <FileText className="h-4 w-4 text-blue-600" strokeWidth={1.5} />
+                      <span className="font-medium text-slate-900">{viewing.resume_filename || "View resume"}</span>
+                      <Download className="h-3.5 w-3.5 text-slate-400" />
+                    </button>
+                  </div>
+                )}
                 <div>
                   <div className="text-xs uppercase tracking-widest font-semibold text-slate-500 mb-2">Move to stage</div>
                   <div className="flex flex-wrap gap-2">
@@ -212,6 +259,7 @@ export default function AdminJobs() {
                       </button>
                     ))}
                   </div>
+                  <p className="text-xs text-slate-400 mt-2">The candidate is automatically emailed when the stage changes.</p>
                 </div>
               </div>
             </>

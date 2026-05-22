@@ -24,6 +24,7 @@ from routes.notifications import router as notifications_router  # noqa: E402
 from routes.dashboard import router as dashboard_router  # noqa: E402
 from routes.careers import public_router as careers_public_router, admin_router as jobs_admin_router  # noqa: E402
 from seed import ensure_indexes, seed_admin_and_demo  # noqa: E402
+from storage import init_storage  # noqa: E402
 
 
 logging.basicConfig(
@@ -75,6 +76,7 @@ async def on_startup():
     try:
         await ensure_indexes()
         await seed_admin_and_demo()
+        init_storage()
         logger.info("HRMIS startup: indexes + seed complete")
     except Exception as e:
         logger.error(f"Startup error: {e}")

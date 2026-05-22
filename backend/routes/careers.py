@@ -2,12 +2,16 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Response
+from fastapi.responses import StreamingResponse
+import io
+import csv
 from pydantic import BaseModel, EmailStr, Field
 
 from auth import get_current_user, require_roles
 from db import get_db
 from email_service import send_email, render
+from storage import put_object, get_object, APP_NAME
 
 # Public router for the careers site (no auth)
 public_router = APIRouter(prefix="/api/careers", tags=["careers-public"])
@@ -45,6 +49,8 @@ class ApplicationCreate(BaseModel):
     linkedin: Optional[str] = None
     portfolio: Optional[str] = None
     cover_letter: str = Field(min_length=20)
+    resume_path: Optional[str] = None
+    resume_filename: Optional[str] = None
 
 
 # -------------------- PUBLIC --------------------
@@ -96,6 +102,8 @@ async def public_apply(body: ApplicationCreate):
         "linkedin": body.linkedin,
         "portfolio": body.portfolio,
         "cover_letter": body.cover_letter,
+        "resume_path": body.resume_path,
+        "resume_filename": body.resume_filename,
         "stage": "new",  # new | reviewing | interview | offered | hired | rejected
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -202,12 +210,138 @@ async def list_applications(
 
 class StageUpdate(BaseModel):
     stage: str  # new | reviewing | interview | offered | hired | rejected
+    notify_candidate: bool = True
+
+
+STAGE_EMAILS = {
+    "reviewing": {
+        "subject": "Your application is under review",
+        "title": "We're reviewing your application",
+        "body": "Hi {name},<br/><br/>Good news — our recruiting team is reviewing your application for the <b>{job_title}</b> role. We'll be in touch with next steps shortly.<br/><br/>Thanks for your patience.",
+    },
+    "interview": {
+        "subject": "Interview round — {job_title}",
+        "title": "We'd love to talk",
+        "body": "Hi {name},<br/><br/>Thanks for applying for <b>{job_title}</b>. We were impressed and would love to schedule an interview to learn more about you.<br/><br/>Our recruiting team will reach out shortly with scheduling details.",
+    },
+    "offered": {
+        "subject": "An offer is on its way 🎉 — {job_title}",
+        "title": "Offer extended",
+        "body": "Hi {name},<br/><br/>We're delighted to extend an offer for the <b>{job_title}</b> role. You'll receive the formal offer letter and details from our People Ops team within one business day.<br/><br/>Welcome (almost) to the team!",
+    },
+    "hired": {
+        "subject": "Welcome to Acme Corp",
+        "title": "Welcome aboard",
+        "body": "Hi {name},<br/><br/>It's official — welcome to the team! We're thrilled to have you joining as <b>{job_title}</b>. Your onboarding details will follow shortly.",
+    },
+    "rejected": {
+        "subject": "Update on your application",
+        "title": "An update on your application",
+        "body": "Hi {name},<br/><br/>Thank you for your interest in the <b>{job_title}</b> role and for taking the time to apply. After careful consideration, we won't be moving forward with your application at this time.<br/><br/>We genuinely appreciate the effort you put in and wish you the very best.",
+    },
+}
 
 
 @admin_router.patch("/applications/{application_id}")
 async def update_application(application_id: str, body: StageUpdate, admin: dict = Depends(require_roles("super_admin", "hr"))):
     db = get_db()
-    res = await db.applications.update_one({"id": application_id}, {"$set": {"stage": body.stage}})
-    if res.matched_count == 0:
+    app_doc = await db.applications.find_one({"id": application_id}, {"_id": 0})
+    if not app_doc:
         raise HTTPException(status_code=404, detail="Application not found")
+
+    prev_stage = app_doc.get("stage")
+    await db.applications.update_one({"id": application_id}, {"$set": {"stage": body.stage}})
+
+    # Email the candidate on stage transition (not on no-op)
+    if body.notify_candidate and body.stage != prev_stage and body.stage in STAGE_EMAILS:
+        tmpl = STAGE_EMAILS[body.stage]
+        subject = tmpl["subject"].format(job_title=app_doc["job_title"])
+        body_html = tmpl["body"].format(name=app_doc["name"], job_title=app_doc["job_title"])
+        await send_email(app_doc["email"], subject, render(tmpl["title"], body_html))
+
     return await db.applications.find_one({"id": application_id}, {"_id": 0})
+
+
+# ----------------- Resume upload / download -----------------
+
+@public_router.post("/resume")
+async def upload_resume(file: UploadFile = File(...)):
+    """Public: upload a resume PDF before submitting an application."""
+    allowed = {"application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
+    content_type = file.content_type or "application/octet-stream"
+    if content_type not in allowed:
+        raise HTTPException(status_code=400, detail="Please upload a PDF or Word document.")
+    data = await file.read()
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (10 MB max).")
+    ext = "pdf"
+    if "." in (file.filename or ""):
+        ext = file.filename.rsplit(".", 1)[-1].lower()
+    path = f"{APP_NAME}/resumes/{uuid.uuid4()}.{ext}"
+    try:
+        result = put_object(path, data, content_type)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Storage unavailable: {e}")
+    return {
+        "path": result["path"],
+        "filename": file.filename,
+        "size": result.get("size", len(data)),
+        "content_type": content_type,
+    }
+
+
+@admin_router.get("/applications/{application_id}/resume")
+async def download_resume(application_id: str, admin: dict = Depends(require_roles("super_admin", "hr", "manager"))):
+    db = get_db()
+    app_doc = await db.applications.find_one({"id": application_id}, {"_id": 0})
+    if not app_doc or not app_doc.get("resume_path"):
+        raise HTTPException(status_code=404, detail="No resume on this application")
+    try:
+        data, content_type = get_object(app_doc["resume_path"])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Couldn't fetch resume: {e}")
+    filename = app_doc.get("resume_filename") or "resume.pdf"
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ----------------- CSV export -----------------
+
+@admin_router.get("/applications/export.csv")
+async def export_applications_csv(
+    admin: dict = Depends(require_roles("super_admin", "hr")),
+    job_id: Optional[str] = None,
+    stage: Optional[str] = None,
+):
+    db = get_db()
+    q: dict = {}
+    if job_id and job_id != "all":
+        q["job_id"] = job_id
+    if stage and stage != "all":
+        q["stage"] = stage
+    items = await db.applications.find(q, {"_id": 0}).sort("created_at", -1).to_list(5000)
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["Applied at", "Name", "Email", "Phone", "LinkedIn", "Portfolio", "Job", "Stage", "Cover letter"])
+    for a in items:
+        writer.writerow([
+            a.get("created_at", ""),
+            a.get("name", ""),
+            a.get("email", ""),
+            a.get("phone", ""),
+            a.get("linkedin", ""),
+            a.get("portfolio", ""),
+            a.get("job_title", ""),
+            a.get("stage", ""),
+            (a.get("cover_letter") or "").replace("\n", " "),
+        ])
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="applicants-{datetime.now(timezone.utc).date().isoformat()}.csv"'},
+    )

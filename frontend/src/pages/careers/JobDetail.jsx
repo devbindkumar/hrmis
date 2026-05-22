@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Briefcase, MapPin, Clock, ArrowLeft, CheckCircle2, Building2, Loader2 } from "lucide-react";
+import { Briefcase, MapPin, Clock, ArrowLeft, CheckCircle2, Building2, Loader2, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,9 @@ export default function JobDetail() {
   const [submitted, setSubmitted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", phone: "", linkedin: "", portfolio: "", cover_letter: "" });
+  const [resume, setResume] = useState(null); // { path, filename, size }
+  const [uploadingResume, setUploadingResume] = useState(false);
+  const fileRef = useRef();
 
   useEffect(() => {
     axios.get(`${API}/careers/jobs/${id}`).then((r) => setJob(r.data)).catch(() => {
@@ -30,13 +33,38 @@ export default function JobDetail() {
     if (form.cover_letter.length < 20) { toast.error("Please write at least a short cover letter."); return; }
     setBusy(true);
     try {
-      await axios.post(`${API}/careers/apply`, { ...form, job_id: id });
+      await axios.post(`${API}/careers/apply`, {
+        ...form,
+        job_id: id,
+        resume_path: resume?.path || null,
+        resume_filename: resume?.filename || null,
+      });
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       const detail = err.response?.data?.detail;
       toast.error(typeof detail === "string" ? detail : "Couldn't submit your application");
     } finally { setBusy(false); }
+  };
+
+  const handleResume = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 10 * 1024 * 1024) { toast.error("File must be under 10 MB"); return; }
+    setUploadingResume(true);
+    try {
+      const data = new FormData();
+      data.append("file", f);
+      const { data: res } = await axios.post(`${API}/careers/resume`, data);
+      setResume(res);
+      toast.success("Resume uploaded");
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      toast.error(typeof detail === "string" ? detail : "Couldn't upload resume");
+    } finally {
+      setUploadingResume(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
   };
 
   if (!job) return <div className="min-h-screen grid place-items-center text-slate-400"><Loader2 className="h-6 w-6 animate-spin" /></div>;
@@ -139,6 +167,35 @@ export default function JobDetail() {
                   <Label>Why are you a great fit for this role? *</Label>
                   <Textarea value={form.cover_letter} onChange={(e)=>setForm({...form, cover_letter: e.target.value})} placeholder="Tell us a bit about you — your relevant work, what excites you about this role, and anything else we should know." className="mt-1.5 min-h-[140px]" required data-testid="apply-cover" />
                   <div className="text-xs text-slate-400 mt-1">{form.cover_letter.length} characters · min 20</div>
+                </div>
+                <div className="md:col-span-2">
+                  <Label>Resume (PDF or DOC, optional)</Label>
+                  <div className="mt-1.5">
+                    {resume ? (
+                      <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3" data-testid="resume-uploaded">
+                        <div className="flex items-center gap-2 text-sm text-emerald-700 min-w-0">
+                          <Paperclip className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+                          <span className="font-medium truncate">{resume.filename}</span>
+                          <span className="text-xs text-emerald-600">{(resume.size / 1024).toFixed(0)} KB</span>
+                        </div>
+                        <button type="button" onClick={()=>setResume(null)} className="text-emerald-700 hover:text-emerald-900 ml-3 shrink-0" data-testid="remove-resume">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-200 hover:border-slate-300 hover:bg-slate-50 px-4 py-6 cursor-pointer transition-colors" data-testid="resume-upload-zone">
+                        {uploadingResume ? (
+                          <span className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Uploading…</span>
+                        ) : (
+                          <span className="flex items-center gap-2 text-sm text-slate-600">
+                            <Paperclip className="h-4 w-4" strokeWidth={1.5} />
+                            <span><b className="text-slate-900">Click to upload</b> · PDF or DOC, max 10 MB</span>
+                          </span>
+                        )}
+                        <input ref={fileRef} type="file" className="hidden" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={handleResume} data-testid="apply-resume" />
+                      </label>
+                    )}
+                  </div>
                 </div>
               </div>
 
