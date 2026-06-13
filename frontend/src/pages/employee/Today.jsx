@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { LogIn, LogOut, Coffee, Video, House, Activity, ArrowRight, CalendarDays, BellRing } from "lucide-react";
+import { LogIn, LogOut, Coffee, Video, House, Activity, CalendarDays, BellRing } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import StatusPill from "@/components/StatusPill";
@@ -163,7 +163,7 @@ export default function EmployeeToday() {
               <QuickAction icon={CalendarDays} label="Apply leave" to="/employee/leave" testid="apply-leave-link" />
               <QuickAction icon={House} label="Apply WFH" to="/employee/wfh" testid="apply-wfh-link" />
               <QuickAction icon={Video} label="Schedule" to="/employee/meetings" testid="schedule-meeting-link" />
-              <QuickAction icon={ArrowRight} label="Open chat" to="/employee/chat" testid="open-chat-link" />
+              <QuickAction icon={BellRing} label="Notifications" to="/employee" testid="notifications-link" />
             </div>
           </div>
         </div>

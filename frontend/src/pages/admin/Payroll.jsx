@@ -44,6 +44,7 @@ export default function Payroll() {
   const [summary, setSummary] = useState(null);
   const [structures, setStructures] = useState([]);
   const [payslips, setPayslips] = useState([]);
+  const [runs, setRuns] = useState([]);
   const [periodStatus, setPeriodStatus] = useState(null);
   const [period, setPeriod] = useState(thisMonth());
   const [editing, setEditing] = useState(null);
@@ -55,8 +56,9 @@ export default function Payroll() {
   const loadStructures = () => api.get("/payroll/structures").then((r) => setStructures(r.data));
   const loadPayslips = () => api.get("/payroll/payslips", { params: { period } }).then((r) => setPayslips(r.data));
   const loadPeriodStatus = () => api.get("/payroll/period-status", { params: { period } }).then((r) => setPeriodStatus(r.data));
+  const loadRuns = () => api.get("/payroll/runs").then((r) => setRuns(r.data));
 
-  useEffect(() => { loadSummary(); loadStructures(); loadPayslips(); loadPeriodStatus(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { loadSummary(); loadStructures(); loadPayslips(); loadPeriodStatus(); loadRuns(); /* eslint-disable-next-line */ }, []);
   useEffect(() => { loadPayslips(); loadPeriodStatus(); /* eslint-disable-next-line */ }, [period]);
 
   const runPayroll = async () => {
@@ -76,7 +78,7 @@ export default function Payroll() {
     try {
       const { data } = await api.post("/payroll/approve-month", { period });
       toast.success(`Approved ${data.finalized} payslip(s) · total net ${fmtMoney(data.total_net, periodStatus.currency)}`);
-      loadPayslips(); loadSummary(); loadPeriodStatus();
+      loadPayslips(); loadSummary(); loadPeriodStatus(); loadRuns();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
     finally { setApproving(false); }
   };
@@ -128,6 +130,7 @@ export default function Payroll() {
           <TabsTrigger value="run" data-testid="tab-run">Run payroll</TabsTrigger>
           <TabsTrigger value="structures" data-testid="tab-structures">Salary structures</TabsTrigger>
           <TabsTrigger value="payslips" data-testid="tab-payslips">Payslip history</TabsTrigger>
+          <TabsTrigger value="runs" data-testid="tab-runs">Approvals log</TabsTrigger>
         </TabsList>
 
         {/* SUMMARY */}
@@ -288,6 +291,42 @@ export default function Payroll() {
             </Button>
           </div>
           <PayslipTable payslips={payslips} onFinalize={finalizeOne} onMarkPaid={markPaidOne} onView={setViewing} canApprove={isSuperAdmin} />
+        </TabsContent>
+
+        {/* RUNS AUDIT LOG */}
+        <TabsContent value="runs" className="mt-4" data-testid="runs-tab-content">
+          <div className="surface overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-100">
+              <h3 className="font-display text-base font-medium text-slate-900">Payroll approvals log</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Every batch approved by a Super Admin. Tamper-evident audit trail.</p>
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+                  <th className="text-left font-semibold px-5 py-3">Approved at</th>
+                  <th className="text-left font-semibold px-5 py-3">Period</th>
+                  <th className="text-left font-semibold px-5 py-3">Approver</th>
+                  <th className="text-right font-semibold px-5 py-3">Payslips</th>
+                  <th className="text-right font-semibold px-5 py-3">Total gross</th>
+                  <th className="text-right font-semibold px-5 py-3">Total net</th>
+                </tr>
+              </thead>
+              <tbody>
+                {runs.length === 0 ? (
+                  <tr><td colSpan="6" className="px-5 py-12 text-center text-slate-400">No approvals yet. When a Super Admin approves a payroll month it will appear here.</td></tr>
+                ) : runs.map((r) => (
+                  <tr key={r.id} className="border-t border-slate-100 hover:bg-slate-50/60" data-testid={`run-${r.id}`}>
+                    <td className="px-5 py-3 text-slate-700">{new Date(r.approved_at).toLocaleString()}</td>
+                    <td className="px-5 py-3 font-medium text-slate-900">{monthDisplay(r.period)}</td>
+                    <td className="px-5 py-3 text-slate-700">{r.approved_by}</td>
+                    <td className="px-5 py-3 text-right text-slate-700">{r.count}</td>
+                    <td className="px-5 py-3 text-right text-slate-700">{fmtMoney(r.total_gross, r.currency)}</td>
+                    <td className="px-5 py-3 text-right text-slate-900 font-semibold">{fmtMoney(r.total_net, r.currency)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </TabsContent>
       </Tabs>
 
@@ -518,6 +557,7 @@ export function PayslipDetailDialog({ ps }) {
     <tbody>
       <tr><td>Provident fund (${c.pf_pct}% of base)</td><td class="amount">−${fmtMoney(c.pf_amount, c.currency)}</td></tr>
       <tr><td>Income tax (${c.tax_pct}%)</td><td class="amount">−${fmtMoney(c.tax_amount, c.currency)}</td></tr>
+      ${c.lop_days > 0 ? `<tr><td>Loss of pay (${c.lop_days} unpaid day${c.lop_days === 1 ? '' : 's'} × ${fmtMoney(c.per_day_rate, c.currency)})</td><td class="amount">−${fmtMoney(c.lop_amount, c.currency)}</td></tr>` : ''}
       <tr class="row-totals"><td>Total deductions</td><td class="amount">−${fmtMoney(c.total_deductions, c.currency)}</td></tr>
     </tbody>
   </table>
@@ -553,7 +593,12 @@ export function PayslipDetailDialog({ ps }) {
           <Row label="Gross" value={fmtMoney(c.gross, c.currency)} bold />
           <Row label={`PF (${c.pf_pct}%)`} value={`−${fmtMoney(c.pf_amount, c.currency)}`} />
           <Row label={`Tax (${c.tax_pct}%)`} value={`−${fmtMoney(c.tax_amount, c.currency)}`} />
-          <Row label="Deductions" value={`−${fmtMoney(c.total_deductions, c.currency)}`} />
+          {c.lop_days > 0 ? (
+            <Row label={`LOP · ${c.lop_days} day${c.lop_days === 1 ? '' : 's'}`} value={`−${fmtMoney(c.lop_amount, c.currency)}`} />
+          ) : (
+            <Row label="LOP" value={c.working_days ? `0 days · full month` : "—"} />
+          )}
+          <Row label="Total deductions" value={`−${fmtMoney(c.total_deductions, c.currency)}`} />
         </div>
         <div className="border-t border-slate-100 pt-3 flex items-center justify-between">
           <div className="text-xs uppercase tracking-widest font-semibold text-slate-400">Net pay</div>

@@ -2,7 +2,8 @@
 import uuid
 import io
 import csv
-from datetime import datetime, timezone
+import calendar
+from datetime import datetime, timezone, date, timedelta
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -38,7 +39,7 @@ class RunPayroll(BaseModel):
     period: str  # YYYY-MM
 
 
-def _calc_payslip(struct: dict) -> dict:
+def _calc_payslip(struct: dict, lop_days: int = 0, working_days: int = 22) -> dict:
     base = float(struct.get("base_salary", 0) or 0)
     al = struct.get("allowances") or {}
     hra = float(al.get("hra", 0) or 0)
@@ -47,7 +48,10 @@ def _calc_payslip(struct: dict) -> dict:
     gross = base + hra + transport + special
     pf_amount = round(base * (struct.get("pf_pct", 0) or 0) / 100, 2)
     tax_amount = round((gross - pf_amount) * (struct.get("tax_pct", 0) or 0) / 100, 2)
-    total_deductions = round(pf_amount + tax_amount, 2)
+    # Loss-of-pay: per-day rate applied to LOP days. Use base as the per-day rate basis.
+    per_day_rate = round(base / working_days, 2) if working_days else 0
+    lop_amount = round(per_day_rate * lop_days, 2)
+    total_deductions = round(pf_amount + tax_amount + lop_amount, 2)
     net = round(gross - total_deductions, 2)
     return {
         "base_salary": round(base, 2),
@@ -57,12 +61,81 @@ def _calc_payslip(struct: dict) -> dict:
         "gross": round(gross, 2),
         "pf_amount": pf_amount,
         "tax_amount": tax_amount,
+        "lop_days": lop_days,
+        "lop_amount": lop_amount,
+        "per_day_rate": per_day_rate,
+        "working_days": working_days,
         "total_deductions": total_deductions,
         "net": net,
         "currency": struct.get("currency", "USD"),
         "pf_pct": struct.get("pf_pct"),
         "tax_pct": struct.get("tax_pct"),
     }
+
+
+def _working_days_in_period(period: str) -> int:
+    """Count Mon-Fri days in a YYYY-MM period."""
+    year, month = map(int, period.split("-"))
+    last_day = calendar.monthrange(year, month)[1]
+    count = 0
+    for d in range(1, last_day + 1):
+        if date(year, month, d).weekday() < 5:
+            count += 1
+    return count
+
+
+async def _compute_lop(db, company_id: str, user_id: str, period: str) -> dict:
+    """Calculate LOP (unpaid) days for a user in a given period."""
+    year, month = map(int, period.split("-"))
+    last_day = calendar.monthrange(year, month)[1]
+    period_start = date(year, month, 1)
+    period_end = date(year, month, last_day)
+    start_iso = period_start.isoformat()
+    end_iso = period_end.isoformat()
+
+    paid_dates: set = set()
+
+    # Days with check-in count as worked
+    attendance = await db.attendance.find(
+        {"user_id": user_id, "date": {"$gte": start_iso, "$lte": end_iso}},
+        {"_id": 0, "date": 1, "check_in": 1},
+    ).to_list(100)
+    for a in attendance:
+        if a.get("check_in"):
+            try: paid_dates.add(date.fromisoformat(a["date"]))
+            except Exception: pass
+
+    # Approved leave (any overlap within the period)
+    leaves = await db.leave_requests.find(
+        {"user_id": user_id, "company_id": company_id, "status": "approved",
+         "start_date": {"$lte": end_iso}, "end_date": {"$gte": start_iso}},
+        {"_id": 0, "start_date": 1, "end_date": 1},
+    ).to_list(200)
+    for l in leaves:
+        try:
+            ls = max(date.fromisoformat(l["start_date"]), period_start)
+            le = min(date.fromisoformat(l["end_date"]), period_end)
+            d = ls
+            while d <= le:
+                paid_dates.add(d)
+                d += timedelta(days=1)
+        except Exception: pass
+
+    # Approved WFH days
+    wfh = await db.wfh_requests.find(
+        {"user_id": user_id, "company_id": company_id, "status": "approved",
+         "date": {"$gte": start_iso, "$lte": end_iso}},
+        {"_id": 0, "date": 1},
+    ).to_list(100)
+    for w in wfh:
+        try: paid_dates.add(date.fromisoformat(w["date"]))
+        except Exception: pass
+
+    # Only count working days (Mon-Fri)
+    paid_workdays = sum(1 for d in paid_dates if d.weekday() < 5)
+    working_days = _working_days_in_period(period)
+    lop_days = max(working_days - paid_workdays, 0)
+    return {"working_days": working_days, "paid_workdays": paid_workdays, "lop_days": lop_days}
 
 
 # ---------------- Salary Structures ----------------
@@ -159,7 +232,10 @@ async def run_payroll(body: RunPayroll, admin: dict = Depends(require_roles("sup
         emp = emp_map.get(s["user_id"])
         if not emp:
             continue
-        calc = _calc_payslip(s)
+        # Compute LOP for this user in this period
+        lop_info = await _compute_lop(db, cid, s["user_id"], period)
+        calc = _calc_payslip(s, lop_days=lop_info["lop_days"], working_days=lop_info["working_days"])
+        calc["paid_workdays"] = lop_info["paid_workdays"]
         existing = await db.payslips.find_one({"company_id": cid, "user_id": s["user_id"], "period": period})
         if existing and existing.get("status") in ("finalized", "paid"):
             skipped += 1
@@ -418,6 +494,14 @@ async def approve_month(body: ApproveMonthBody, admin: dict = Depends(require_ro
         "currency": drafts[0]["components"]["currency"],
     })
     return {"period": period, "finalized": finalized_total, "total_net": total_net, "total_gross": total_gross}
+
+
+@router.get("/runs")
+async def list_runs(admin: dict = Depends(require_roles("super_admin", "hr"))):
+    """Audit log of payroll approval batches."""
+    db = get_db()
+    items = await db.payroll_runs.find({"company_id": company_id_of(admin)}, {"_id": 0}).sort("approved_at", -1).to_list(200)
+    return items
 
 
 # ---------------- CSV export ----------------

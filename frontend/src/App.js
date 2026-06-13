@@ -27,7 +27,6 @@ import MyWFH from "@/pages/employee/MyWFH";
 import Profile from "@/pages/employee/Profile";
 import MyPayslips from "@/pages/employee/MyPayslips";
 
-import Chat from "@/pages/Chat";
 import Meetings from "@/pages/Meetings";
 
 import CareersHome from "@/pages/careers/CareersHome";
@@ -62,7 +61,6 @@ function App() {
             <Route path="leave" element={<AdminLeave />} />
             <Route path="wfh" element={<AdminWFH />} />
             <Route path="meetings" element={<div className="p-6"><Meetings /></div>} />
-            <Route path="chat" element={<Chat />} />
             <Route path="announcements" element={<AdminAnnouncements />} />
             <Route path="reports" element={<AdminReports />} />
             <Route path="payroll" element={<AdminPayroll />} />
@@ -85,7 +83,6 @@ function App() {
             <Route path="wfh" element={<MyWFH />} />
             <Route path="payslips" element={<MyPayslips />} />
             <Route path="meetings" element={<Meetings />} />
-            <Route path="chat" element={<Chat />} />
             <Route path="profile" element={<Profile />} />
           </Route>
 
