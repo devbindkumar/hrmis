@@ -44,6 +44,8 @@ function App() {
           {/* Public careers */}
           <Route path="/careers" element={<CareersHome />} />
           <Route path="/careers/:id" element={<JobDetail />} />
+          <Route path="/c/:slug/careers" element={<CareersHome />} />
+          <Route path="/c/:slug/careers/:id" element={<JobDetail />} />
 
           {/* Admin */}
           <Route

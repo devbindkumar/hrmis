@@ -105,13 +105,20 @@ async def _compute_lop(db, company_id: str, user_id: str, period: str) -> dict:
             try: paid_dates.add(date.fromisoformat(a["date"]))
             except Exception: pass
 
-    # Approved leave (any overlap within the period)
+    # Build is_paid map for leave types in this company
+    leave_types = await db.leave_types.find({"company_id": company_id}, {"_id": 0, "name": 1, "is_paid": 1}).to_list(100)
+    is_paid_map = {lt["name"]: bool(lt.get("is_paid", True)) for lt in leave_types}
+
+    # Approved leave (any overlap within the period). Only PAID types count as worked days.
     leaves = await db.leave_requests.find(
         {"user_id": user_id, "company_id": company_id, "status": "approved",
          "start_date": {"$lte": end_iso}, "end_date": {"$gte": start_iso}},
-        {"_id": 0, "start_date": 1, "end_date": 1},
+        {"_id": 0, "start_date": 1, "end_date": 1, "leave_type": 1},
     ).to_list(200)
     for l in leaves:
+        # Default to paid if leave type is unknown (back-compat for legacy data)
+        if not is_paid_map.get(l.get("leave_type"), True):
+            continue  # unpaid leave -> let those days count as LOP
         try:
             ls = max(date.fromisoformat(l["start_date"]), period_start)
             le = min(date.fromisoformat(l["end_date"]), period_end)

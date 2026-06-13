@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Building2, Plus, Trash2, Settings as SettingsIcon } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import LeaveTypesPanel from "@/pages/admin/LeaveTypesPanel";
 
 export default function AdminSettings() {
   const [departments, setDepartments] = useState([]);
@@ -90,6 +91,8 @@ export default function AdminSettings() {
           </div>
         </div>
       </div>
+
+      <LeaveTypesPanel />
     </div>
   );
 }

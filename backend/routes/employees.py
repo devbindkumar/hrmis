@@ -255,14 +255,17 @@ async def create_employee(body: EmployeeCreate, admin: dict = Depends(require_ro
     }
     await db.employees.insert_one(emp)
 
-    # Seed leave balances
-    for lt, qty in [("Casual", 12), ("Sick", 8), ("Earned", 15), ("WFH Quota", 60)]:
+    # Seed leave balances from configured leave types
+    types = await db.leave_types.find({"company_id": cid}, {"_id": 0, "name": 1, "default_quota": 1}).to_list(100)
+    if not types:  # fallback if no types configured
+        types = [{"name": n, "default_quota": q} for n, q in [("Casual", 12), ("Sick", 8), ("Earned", 15), ("WFH Quota", 60)]]
+    for lt in types:
         await db.leave_balances.insert_one({
             "id": str(uuid.uuid4()),
             "company_id": cid,
             "user_id": user_id,
-            "leave_type": lt,
-            "total": qty,
+            "leave_type": lt["name"],
+            "total": lt.get("default_quota", 0),
             "used": 0,
         })
 

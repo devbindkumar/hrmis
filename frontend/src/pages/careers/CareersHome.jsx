@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import axios from "axios";
 import { Briefcase, MapPin, Clock, Search, ArrowUpRight, Building2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -8,27 +8,39 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export default function CareersHome() {
+  const { slug } = useParams();
   const [jobs, setJobs] = useState([]);
+  const [company, setCompany] = useState(null);
   const [q, setQ] = useState("");
   const [dept, setDept] = useState("all");
 
   useEffect(() => {
-    axios.get(`${API}/careers/jobs`, { params: { q: q || undefined, department: dept } }).then((r) => setJobs(r.data));
-  }, [q, dept]);
+    axios.get(`${API}/careers/jobs`, { params: { q: q || undefined, department: dept, company: slug || undefined } }).then((r) => setJobs(r.data));
+  }, [q, dept, slug]);
+
+  useEffect(() => {
+    const effectiveSlug = slug || "acme";
+    axios.get(`${API}/careers/branding`, { params: { slug: effectiveSlug } }).then((r) => setCompany(r.data)).catch(() => setCompany(null));
+  }, [slug]);
 
   const departments = Array.from(new Set(jobs.map((j) => j.department)));
+  const accent = company?.accent_color || "#0f172a";
+  const careersBase = slug ? `/c/${slug}/careers` : "/careers";
 
   return (
-    <div className="min-h-screen bg-slate-50" data-testid="careers-home">
-      {/* Header */}
+    <div className="min-h-screen bg-slate-50" data-testid="careers-home" style={{ "--company-accent": accent }}>
       <header className="bg-white border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link to="/careers" className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-slate-900 grid place-items-center">
-              <Building2 className="h-4 w-4 text-white" strokeWidth={1.5} />
+          <Link to={careersBase} className="flex items-center gap-2">
+            <div className="h-9 w-9 rounded-lg grid place-items-center overflow-hidden" style={{ background: accent }}>
+              {company?.has_logo ? (
+                <img src={`${API}/companies/${company.id}/logo`} alt={company.name} className="h-full w-full object-cover" data-testid="careers-company-logo" />
+              ) : (
+                <Building2 className="h-4 w-4 text-white" strokeWidth={1.5} />
+              )}
             </div>
             <div>
-              <div className="font-display text-base font-semibold text-slate-900 leading-none">Acme Corp</div>
+              <div className="font-display text-base font-semibold text-slate-900 leading-none">{company?.name || "Careers"}</div>
               <div className="text-[10px] uppercase tracking-widest text-slate-400">Careers</div>
             </div>
           </Link>
@@ -38,7 +50,6 @@ export default function CareersHome() {
         </div>
       </header>
 
-      {/* Hero */}
       <section className="relative overflow-hidden border-b border-slate-200 bg-white">
         <div className="absolute inset-0 grid-bg opacity-60" />
         <div className="relative max-w-6xl mx-auto px-6 py-20 lg:py-28">
@@ -47,13 +58,14 @@ export default function CareersHome() {
             We're hiring
           </div>
           <h1 className="font-display text-5xl sm:text-6xl lg:text-7xl font-semibold tracking-tight text-slate-900 mt-6 leading-[1.02]">
-            Build the future of <br className="hidden sm:block" /> people operations.
+            Build the future at <br className="hidden sm:block" />
+            <span style={{ color: accent }}>{company?.name || "our company"}</span>.
           </h1>
           <p className="mt-6 text-lg text-slate-600 max-w-2xl leading-relaxed">
-            We're a small team building software that treats people like people. Browse open roles below — we read every application.
+            We're a team building work people care about. Browse open roles below — we read every application.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
-            <a href="#openings" className="inline-flex items-center gap-2 px-5 h-11 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium" data-testid="see-openings-btn">
+            <a href="#openings" className="inline-flex items-center gap-2 px-5 h-11 rounded-lg text-white text-sm font-medium" style={{ background: accent }} data-testid="see-openings-btn">
               See open roles <ArrowUpRight className="h-4 w-4" strokeWidth={1.5} />
             </a>
             <div className="text-sm text-slate-500"><b className="text-slate-900">{jobs.length}</b> open positions</div>
@@ -61,7 +73,6 @@ export default function CareersHome() {
         </div>
       </section>
 
-      {/* Filters + listings */}
       <section id="openings" className="max-w-6xl mx-auto px-6 py-14">
         <div className="flex items-end justify-between flex-wrap gap-3 mb-6">
           <div>
@@ -89,22 +100,22 @@ export default function CareersHome() {
           ) : jobs.map((j) => (
             <Link
               key={j.id}
-              to={`/careers/${j.id}`}
+              to={slug ? `/c/${slug}/careers/${j.id}` : `/careers/${j.id}`}
               className="surface p-6 card-hover flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 group block"
               data-testid={`job-card-${j.id}`}
             >
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 text-xs uppercase tracking-widest font-semibold text-blue-600">
+                <div className="flex items-center gap-2 text-xs uppercase tracking-widest font-semibold" style={{ color: accent }}>
                   <span>{j.department}</span>
                 </div>
-                <h3 className="font-display text-xl font-medium text-slate-900 mt-2 group-hover:text-blue-700 transition-colors">{j.title}</h3>
+                <h3 className="font-display text-xl font-medium text-slate-900 mt-2 group-hover:opacity-80 transition-opacity">{j.title}</h3>
                 <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-slate-500">
                   <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" strokeWidth={1.5} />{j.location}</span>
                   <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" strokeWidth={1.5} />{j.employment_type}</span>
                   {j.salary_range && <span className="text-slate-600 font-medium">{j.salary_range}</span>}
                 </div>
               </div>
-              <div className="text-blue-600 font-medium text-sm flex items-center gap-1 shrink-0 group-hover:gap-2 transition-all">
+              <div className="font-medium text-sm flex items-center gap-1 shrink-0 group-hover:gap-2 transition-all" style={{ color: accent }}>
                 View role <ArrowUpRight className="h-4 w-4" strokeWidth={1.5} />
               </div>
             </Link>
@@ -114,7 +125,7 @@ export default function CareersHome() {
 
       <footer className="border-t border-slate-200 bg-white">
         <div className="max-w-6xl mx-auto px-6 py-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="text-sm text-slate-500">© Acme Corp · We're an equal opportunity employer.</div>
+          <div className="text-sm text-slate-500">© {company?.name || "Acme Corp"} · We're an equal opportunity employer.</div>
           <Link to="/login" className="text-sm font-medium text-slate-700 hover:text-slate-900">Employee sign in →</Link>
         </div>
       </footer>

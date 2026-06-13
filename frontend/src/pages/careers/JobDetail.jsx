@@ -11,8 +11,9 @@ import { toast } from "sonner";
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export default function JobDetail() {
-  const { id } = useParams();
+  const { id, slug } = useParams();
   const navigate = useNavigate();
+  const careersBase = slug ? `/c/${slug}/careers` : "/careers";
   const [job, setJob] = useState(null);
   const [submitted, setSubmitted] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -24,9 +25,9 @@ export default function JobDetail() {
   useEffect(() => {
     axios.get(`${API}/careers/jobs/${id}`).then((r) => setJob(r.data)).catch(() => {
       toast.error("This position is no longer open");
-      navigate("/careers");
+      navigate(careersBase);
     });
-  }, [id, navigate]);
+  }, [id, navigate, careersBase]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -73,7 +74,7 @@ export default function JobDetail() {
     <div className="min-h-screen bg-slate-50" data-testid="job-detail">
       <header className="bg-white border-b border-slate-200">
         <div className="max-w-4xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link to="/careers" className="flex items-center gap-2 text-slate-700 hover:text-slate-900">
+          <Link to={careersBase} className="flex items-center gap-2 text-slate-700 hover:text-slate-900">
             <ArrowLeft className="h-4 w-4" strokeWidth={1.5} /> <span className="text-sm font-medium">All openings</span>
           </Link>
           <div className="flex items-center gap-2">
@@ -93,7 +94,7 @@ export default function JobDetail() {
             </div>
             <h2 className="font-display text-2xl font-semibold text-slate-900 mt-5">Application received</h2>
             <p className="text-sm text-slate-500 mt-2">Thanks for applying to <b className="text-slate-900">{job.title}</b>. We've sent a confirmation to your email and our recruiting team will be in touch within 5 working days.</p>
-            <Link to="/careers" className="inline-block mt-6 text-sm font-medium text-blue-600 hover:underline">← Browse other roles</Link>
+            <Link to={careersBase} className="inline-block mt-6 text-sm font-medium text-blue-600 hover:underline">← Browse other roles</Link>
           </div>
         ) : (
           <>

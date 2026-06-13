@@ -106,6 +106,7 @@ async def seed_admin_and_demo():
         if seed_jobs:
             await _seed_sample_jobs(db)
         await _seed_sample_salaries(db, default_company_id)
+        await _seed_leave_types(db, default_company_id)
         return  # demo already seeded
 
     departments = [
@@ -291,3 +292,25 @@ async def _seed_sample_salaries(db, company_id: str):
             "created_at": now,
             "updated_at": now,
         })
+
+
+async def _seed_leave_types(db, company_id: str):
+    """Seed default leave types if missing."""
+    defaults = [
+        ("Casual", 12, True),
+        ("Sick", 8, True),
+        ("Earned", 15, True),
+        ("WFH Quota", 60, True),
+        ("Unpaid Leave", 30, False),
+    ]
+    for name, quota, is_paid in defaults:
+        existing = await db.leave_types.find_one({"company_id": company_id, "name": name})
+        if not existing:
+            await db.leave_types.insert_one({
+                "id": str(uuid.uuid4()),
+                "company_id": company_id,
+                "name": name,
+                "default_quota": quota,
+                "is_paid": is_paid,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })

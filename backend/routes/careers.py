@@ -56,6 +56,24 @@ class ApplicationCreate(BaseModel):
 
 # -------------------- PUBLIC --------------------
 
+@public_router.get("/branding")
+async def public_branding(slug: Optional[str] = None, company_id: Optional[str] = None):
+    """Lightweight public lookup of a company's branding (name, accent, logo presence)."""
+    db = get_db()
+    query: dict = {}
+    if slug:
+        query["slug"] = slug.lower()
+    elif company_id:
+        query["id"] = company_id
+    else:
+        raise HTTPException(status_code=400, detail="Provide slug or company_id")
+    comp = await db.companies.find_one(query, {"_id": 0, "id": 1, "name": 1, "slug": 1, "accent_color": 1, "logo_path": 1})
+    if not comp:
+        raise HTTPException(status_code=404, detail="Company not found")
+    comp["has_logo"] = bool(comp.pop("logo_path", None))
+    return comp
+
+
 @public_router.get("/jobs")
 async def public_list_jobs(department: Optional[str] = None, q: Optional[str] = None, company: Optional[str] = None):
     db = get_db()
