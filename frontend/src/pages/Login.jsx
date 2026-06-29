@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, Loader2 } from "lucide-react";
+import { ArrowRight, Loader2, Briefcase } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Login() {
@@ -31,15 +31,26 @@ export default function Login() {
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2" data-testid="login-page">
-      {/* Left art panel — full-bleed office photo */}
+      {/* Left art panel — full-bleed office photo with overlay + centered badge */}
       <div
-        className="relative hidden lg:block overflow-hidden"
+        className="relative hidden lg:flex items-center justify-center overflow-hidden"
         style={{
           backgroundImage: "url(/login-bg.jpg)",
           backgroundSize: "cover",
           backgroundPosition: "center",
         }}
-      />
+      >
+        {/* Decent light-dark overlay for legibility */}
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-950/45 via-slate-900/30 to-slate-900/55" />
+        {/* Centered HRMIS workspace badge */}
+        <div
+          className="relative z-10 inline-flex items-center gap-2 px-4 py-2 rounded-full border border-white/30 bg-white/10 backdrop-blur-md text-xs uppercase tracking-[0.2em] font-semibold text-white"
+          data-testid="hrmis-badge"
+        >
+          <Briefcase className="h-3.5 w-3.5" strokeWidth={1.5} />
+          HRMIS workspace
+        </div>
+      </div>
 
       {/* Right form */}
       <div className="flex items-center justify-center px-6 py-12 bg-white">
@@ -63,7 +74,7 @@ export default function Login() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@acme.com"
+                placeholder="you@inboxmattersdigital.com"
                 className="mt-2 h-11 rounded-lg border-slate-200 focus-visible:ring-slate-900"
                 required
                 data-testid="login-email-input"
