@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useNavigate } from "react-router-dom";
-import { Briefcase, ArrowRight, Loader2 } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Login() {
@@ -31,44 +31,15 @@ export default function Login() {
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2" data-testid="login-page">
-      {/* Left art panel */}
-      <div className="relative hidden lg:flex items-end p-12 bg-slate-900 overflow-hidden">
-        <div
-          className="absolute inset-0 opacity-60"
-          style={{
-            backgroundImage:
-              "url(https://images.unsplash.com/photo-1769667693205-bfae7aefb59a?crop=entropy&cs=srgb&fm=jpg&w=1600)",
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-          }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-tr from-slate-950 via-slate-900/70 to-transparent" />
-        <div className="relative z-10 max-w-md text-white">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/20 bg-white/5 backdrop-blur text-xs uppercase tracking-widest font-semibold mb-6">
-            <Briefcase className="h-3.5 w-3.5" strokeWidth={1.5} />
-            HRMIS workspace
-          </div>
-          <h1 className="font-display text-5xl font-semibold leading-[1.05] tracking-tight">
-            People operations,
-            <br />
-            built for the modern team.
-          </h1>
-          <p className="mt-5 text-slate-300 text-base leading-relaxed">
-            Attendance, leave, work-from-home, meetings, and team chat — every HR action your company needs, in one calm enterprise workspace.
-          </p>
-          <div className="mt-10 flex items-center gap-6 text-xs text-slate-300">
-            <div><span className="text-white text-base font-display font-semibold">11</span>&nbsp; teammates</div>
-            <div><span className="text-white text-base font-display font-semibold">4</span>&nbsp; departments</div>
-            <div><span className="text-white text-base font-display font-semibold">5</span>&nbsp; role tiers</div>
-          </div>
-          <div className="mt-10 pt-6 border-t border-white/10">
-            <a href="/careers" className="inline-flex items-center gap-2 text-sm text-slate-200 hover:text-white" data-testid="careers-link-login">
-              <span className="px-2 py-0.5 rounded-md bg-white/10 text-[10px] uppercase tracking-widest font-semibold">We're hiring</span>
-              See open roles →
-            </a>
-          </div>
-        </div>
-      </div>
+      {/* Left art panel — full-bleed office photo */}
+      <div
+        className="relative hidden lg:block overflow-hidden"
+        style={{
+          backgroundImage: "url(/login-bg.jpg)",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+      />
 
       {/* Right form */}
       <div className="flex items-center justify-center px-6 py-12 bg-white">
