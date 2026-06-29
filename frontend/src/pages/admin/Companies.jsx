@@ -143,7 +143,7 @@ function NewCompanyDialog({ onCreated }) {
           </div>
           <div>
             <Label>URL slug *</Label>
-            <Input value={form.slug} onChange={(e)=>setForm({...form, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "")})} placeholder="acme" className="mt-1.5 font-mono" data-testid="nc-slug" />
+            <Input value={form.slug} onChange={(e)=>setForm({...form, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "")})} placeholder="imd" className="mt-1.5 font-mono" data-testid="nc-slug" />
             <p className="text-[10px] text-slate-400 mt-1">Used for the careers page: /careers?company=slug</p>
           </div>
         </div>
