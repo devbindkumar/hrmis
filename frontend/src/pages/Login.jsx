@@ -29,11 +29,6 @@ export default function Login() {
     }
   };
 
-  const quickFill = (em) => {
-    setEmail(em);
-    setPassword(em === "admin@acme.com" ? "Admin@123" : "Demo@123");
-  };
-
   return (
     <div className="min-h-screen grid lg:grid-cols-2" data-testid="login-page">
       {/* Left art panel */}
@@ -134,45 +129,6 @@ export default function Login() {
               )}
             </Button>
           </form>
-
-          <div className="mt-8 pt-6 border-t border-slate-100">
-            <p className="text-xs font-semibold uppercase tracking-[0.05em] text-slate-400 mb-3">Demo accounts</p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => quickFill("admin@acme.com")}
-                className="px-3 py-1.5 rounded-full text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium"
-                data-testid="demo-admin-btn"
-              >
-                Super Admin
-              </button>
-              <button
-                type="button"
-                onClick={() => quickFill("jordan@acme.com")}
-                className="px-3 py-1.5 rounded-full text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium"
-                data-testid="demo-hr-btn"
-              >
-                HR
-              </button>
-              <button
-                type="button"
-                onClick={() => quickFill("alex@acme.com")}
-                className="px-3 py-1.5 rounded-full text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium"
-                data-testid="demo-manager-btn"
-              >
-                Manager
-              </button>
-              <button
-                type="button"
-                onClick={() => quickFill("maya@acme.com")}
-                className="px-3 py-1.5 rounded-full text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium"
-                data-testid="demo-employee-btn"
-              >
-                Employee
-              </button>
-            </div>
-            <p className="text-xs text-slate-400 mt-3">Click a chip to auto-fill credentials.</p>
-          </div>
         </div>
       </div>
     </div>
