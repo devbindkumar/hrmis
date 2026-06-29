@@ -79,7 +79,12 @@ export default function Login() {
       <div className="flex items-center justify-center px-6 py-12 bg-white">
         <div className="w-full max-w-md">
           <div className="mb-10">
-            <div className="font-display text-2xl font-semibold text-slate-900">Acme Corp</div>
+            <img
+              src="/imd-logo.png"
+              alt="Inbox Matters Digital"
+              className="h-16 w-auto object-contain"
+              data-testid="login-company-logo"
+            />
             <h2 className="font-display text-3xl mt-8 font-semibold tracking-tight text-slate-900">Sign in</h2>
             <p className="mt-2 text-slate-500 text-sm">Use your work email and password to continue.</p>
           </div>
