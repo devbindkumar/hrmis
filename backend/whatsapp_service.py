@@ -224,27 +224,6 @@ def _build_meta_payload(
     }
 
 
-def _split_phone_for_azmarq(international_digits: str, default_cc: Optional[str] = None) -> Dict[str, str]:
-    """AzMarq requires `countryCode` (with leading '+') and `phoneNumber` (no CC) as
-    separate fields. Best-effort split from a single international digits-only number.
-    """
-    if not international_digits:
-        return {"countryCode": "", "phoneNumber": ""}
-    cc_digits = re.sub(r"\D", "", default_cc or "") if default_cc else ""
-    if cc_digits and international_digits.startswith(cc_digits):
-        return {
-            "countryCode": f"+{cc_digits}",
-            "phoneNumber": international_digits[len(cc_digits):],
-        }
-    # Fallback: assume last 10 digits are the subscriber number
-    if len(international_digits) > 10:
-        return {
-            "countryCode": f"+{international_digits[:-10]}",
-            "phoneNumber": international_digits[-10:],
-        }
-    return {"countryCode": "", "phoneNumber": international_digits}
-
-
 def _build_azmarq_payload(
     to_number: str,
     template_name: str,
