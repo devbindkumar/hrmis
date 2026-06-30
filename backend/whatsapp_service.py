@@ -109,6 +109,7 @@ async def get_config_public(company_id: str) -> Dict[str, Any]:
             "api_base_url": "",
             "default_api_base_url": DEFAULT_API_BASE_URL,
             "provider_default_base_urls": PROVIDER_DEFAULT_BASE_URLS,
+            "payload_extras": None,
             "templates": DEFAULT_TEMPLATES.copy(),
             "events_enabled": DEFAULT_EVENTS_ENABLED.copy(),
             "status_filters": DEFAULT_STATUS_FILTERS.copy(),
@@ -127,6 +128,7 @@ async def get_config_public(company_id: str) -> Dict[str, Any]:
         "api_base_url": cfg.get("api_base_url", ""),
         "default_api_base_url": DEFAULT_API_BASE_URL,
         "provider_default_base_urls": PROVIDER_DEFAULT_BASE_URLS,
+        "payload_extras": cfg.get("payload_extras"),
         "templates": {**DEFAULT_TEMPLATES, **(cfg.get("templates") or {})},
         "events_enabled": {**DEFAULT_EVENTS_ENABLED, **(cfg.get("events_enabled") or {})},
         "status_filters": cfg.get("status_filters") or DEFAULT_STATUS_FILTERS.copy(),
@@ -149,6 +151,24 @@ async def upsert_config(company_id: str, payload: Dict[str, Any]) -> Dict[str, A
                 if val not in SUPPORTED_PROVIDERS:
                     continue
             update[k] = val
+
+    # `payload_extras` is a flexible escape hatch: it's a dict that gets
+    # shallow-merged onto the outgoing AzMarq payload at send-time, so admins
+    # can add or override any fields AzMarq's specific account configuration
+    # demands (e.g. a different sender field name).
+    if "payload_extras" in payload:
+        pe = payload["payload_extras"]
+        if pe is None or pe == "":
+            update["payload_extras"] = None
+        elif isinstance(pe, dict):
+            update["payload_extras"] = pe
+        elif isinstance(pe, str):
+            try:
+                import json as _json
+                update["payload_extras"] = _json.loads(pe) if pe.strip() else None
+            except Exception:
+                # ignore malformed input — admin will see no merge happen
+                pass
 
     # Only overwrite token if a new one is supplied AND it is not the masked placeholder
     new_tok = payload.get("access_token")
@@ -197,6 +217,27 @@ def _build_meta_payload(
     }
 
 
+def _split_phone_for_azmarq(international_digits: str, default_cc: Optional[str] = None) -> Dict[str, str]:
+    """AzMarq requires `countryCode` (with leading '+') and `phoneNumber` (no CC) as
+    separate fields. Best-effort split from a single international digits-only number.
+    """
+    if not international_digits:
+        return {"countryCode": "", "phoneNumber": ""}
+    cc_digits = re.sub(r"\D", "", default_cc or "") if default_cc else ""
+    if cc_digits and international_digits.startswith(cc_digits):
+        return {
+            "countryCode": f"+{cc_digits}",
+            "phoneNumber": international_digits[len(cc_digits):],
+        }
+    # Fallback: assume last 10 digits are the subscriber number
+    if len(international_digits) > 10:
+        return {
+            "countryCode": f"+{international_digits[:-10]}",
+            "phoneNumber": international_digits[-10:],
+        }
+    return {"countryCode": "", "phoneNumber": international_digits}
+
+
 def _build_azmarq_payload(
     to_number: str,
     template_name: str,
@@ -204,20 +245,57 @@ def _build_azmarq_payload(
     language_code: str,
     sender_id: str,
     waba_id: str,
+    default_country_code: Optional[str] = None,
+    payload_extras: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    return {
+    """Build a payload that matches AzMarq's `sendWaTemplate` schema.
+
+    AzMarq's exact field names vary by API version / account configuration, so
+    we send the most-common aliases (`to`, `phoneNumber` + `countryCode`,
+    `senderMobile`, `from`, `wabaId`) and let AzMarq ignore the ones it doesn't
+    recognise. If the admin needs to override or add fields, they can supply a
+    `payload_extras` JSON object that gets shallow-merged on top.
+
+    Body params are sent using AzMarq's `bodyValues` array (plain strings),
+    and `headerType: "none"` is set explicitly because AzMarq returns
+    "Please Provide Header Type input" otherwise.
+    """
+    phone = _split_phone_for_azmarq(to_number, default_country_code)
+    lang = (language_code or "en_US").split("_", 1)[0]
+    payload: Dict[str, Any] = {
+        # Recipient — every alias AzMarq might recognise
         "to": to_number,
+        "countryCode": phone["countryCode"],
+        "phoneNumber": phone["phoneNumber"],
+        # Sender — every alias AzMarq might recognise
         "from": sender_id,
-        "template_name": template_name,
-        "language": language_code,
-        "components": [
-            {
-                "type": "body",
-                "parameters": [{"type": "text", "text": str(p)} for p in params],
-            }
-        ],
+        "senderMobile": sender_id,
+        "senderMobileNumber": sender_id,
+        "senderNumber": sender_id,
+        # Account scope
         "wabaId": waba_id,
+        # Header indicator at root (AzMarq's validator looks for this even if no header component)
+        "headerType": "NONE",
+        # Template body
+        "type": "Template",
+        "template": {
+            "name": template_name,
+            "languageCode": lang,
+            "language": {"code": lang},
+            "headerType": "NONE",
+            "components": [
+                {
+                    "type": "BODY",
+                    "bodyValues": [str(p) for p in params],
+                    "parameters": [{"type": "text", "text": str(p)} for p in params],
+                }
+            ],
+        },
     }
+    if payload_extras and isinstance(payload_extras, dict):
+        # shallow merge so admin can override any top-level key
+        payload.update(payload_extras)
+    return payload
 
 
 def _extract_message_id(provider: str, data: Any) -> Optional[str]:
@@ -299,6 +377,8 @@ async def send_template(
             language_code,
             sender_id=phone_number_id,
             waba_id=cfg.get("business_account_id") or "",
+            default_country_code=cfg.get("default_country_code"),
+            payload_extras=cfg.get("payload_extras"),
         )
     else:
         return {"sent": False, "error": f"Unsupported provider: {provider}"}
@@ -324,6 +404,8 @@ async def send_template(
                 await _log_outbox(
                     company_id, to_clean, template_name, params, "failed",
                     f"[{provider}] {url} → {resp.status_code} {resp.text}",
+                    url=url, request_payload=payload, response_body=resp.text,
+                    response_status=resp.status_code, provider=provider,
                 )
                 return {"sent": False, "status": resp.status_code, "error": resp.text}
             msg_id = _extract_message_id(provider, data)
@@ -331,6 +413,8 @@ async def send_template(
             await _log_outbox(
                 company_id, to_clean, template_name, params, "sent",
                 f"[{provider}] id={msg_id or '-'}",
+                url=url, request_payload=payload, response_body=resp.text,
+                response_status=resp.status_code, provider=provider,
             )
             return {"sent": True, "message_id": msg_id, "provider": provider, "raw": data}
     except Exception as e:
@@ -338,6 +422,7 @@ async def send_template(
         await _log_outbox(
             company_id, to_clean, template_name, params, "exception",
             f"[{provider}] {url} → {e}",
+            url=url, request_payload=payload, provider=provider,
         )
         return {"sent": False, "error": str(e)}
 
@@ -349,8 +434,17 @@ async def _log_outbox(
     params: List[str],
     status: str,
     detail: str,
+    url: Optional[str] = None,
+    request_payload: Optional[Dict[str, Any]] = None,
+    response_body: Optional[str] = None,
+    response_status: Optional[int] = None,
+    provider: Optional[str] = None,
 ) -> None:
-    """Persist every send attempt for audit/troubleshooting."""
+    """Persist every send attempt for audit/troubleshooting.
+
+    Stores the full request payload and response body so admins can debug
+    BSP schema mismatches directly from the UI (Outbox tab).
+    """
     try:
         import uuid
         from datetime import datetime, timezone
@@ -358,11 +452,16 @@ async def _log_outbox(
         await db.whatsapp_outbox.insert_one({
             "id": str(uuid.uuid4()),
             "company_id": company_id,
+            "provider": provider,
             "to": to_number,
             "template": template_name,
             "params": params,
             "status": status,
-            "detail": detail[:2000] if detail else "",
+            "detail": (detail or "")[:2000],
+            "url": url,
+            "request_payload": request_payload,
+            "response_body": (response_body or "")[:4000],
+            "response_status": response_status,
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
     except Exception as e:

@@ -1,0 +1,52 @@
+{
+  "summary": "Iteration 3 — verified AzMarq payload rebuild + payload_extras override + outbox observability. 10/14 new backend tests pass and 10/10 prior regression suite still passes. Found ONE real backend bug: PUT /api/whatsapp/config with literal JSON `null` for payload_extras does NOT clear the value because the route does `body.model_dump(exclude_none=True)` which strips None BEFORE `upsert_config` ever sees the key. Workaround: send empty string `\"\"` which DOES clear. Frontend UI verified: AzMarq textarea (wa-payload-extras-textarea) appears/hides per provider, JSON validation works (red 'JSON error: ...' inline), invalid save is blocked, valid save persists. Outbox rows expand to show URL + Request payload + Response body with working Copy button. Default AzMarq payload contains all required keys (to, countryCode, phoneNumber, from, senderMobile, senderMobileNumber, senderNumber, wabaId, headerType=NONE, type=Template, template{name, languageCode, language.code, headerType, components[BODY with bodyValues + parameters]}). Phone split works (+91 / 10-digit subscriber). Shallow-merge confirmed via outbox audit (campaignName/customField appear at root next to defaults). Clearing extras via empty-string works end-to-end (UI saves '' → backend clears → next test send omits the merged keys). Fire-and-forget regression: employee WFH apply still succeeds with bogus AzMarq creds.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "PUT /api/whatsapp/config",
+        "issue": "`payload_extras: null` does NOT clear existing extras. Route does `body.model_dump(exclude_none=True)` so None is stripped before `upsert_config` sees it, and the `if 'payload_extras' in payload` clear-branch never triggers. Spec explicitly required: `PUT with {payload_extras: null} clears it`. Empty string `\"\"` works as a workaround. Fix: in routes/whatsapp.py change to `model_dump(exclude_unset=True)` OR explicitly handle payload_extras=None before model_dump. UI also sends literal null when textarea is empty (see WhatsApp.jsx line 125 `parsedExtras = null`), so the clear flow from the UI is broken too — currently the user has to type an empty string into the textarea, which they cannot do (empty textarea == cleared text == null in JS).",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Clearing payload_extras from the UI",
+        "issue": "Emptying the wa-payload-extras-textarea + Save sends `payload_extras: null` to the backend, but the backend silently drops the None key (see backend bug). Result: stale extras remain merged on subsequent sends. Need either (a) frontend to send `\"\"` instead of `null` for clear, or (b) backend route to stop stripping None for this field.",
+        "affected_selectors": ["[data-testid=\"wa-payload-extras-textarea\"]"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_whatsapp_payload_extras.py",
+    "/app/test_reports/pytest/whatsapp_payload_extras.xml",
+    "/app/backend/tests/test_whatsapp_provider.py"
+  ],
+  "action_items": [
+    "Fix payload_extras=null clear in routes/whatsapp.py update_whatsapp_config — switch to model_dump(exclude_unset=True), or explicitly pop and forward payload_extras=None to upsert_config. Once fixed, the 4 currently-failing tests in test_whatsapp_payload_extras.py (test_get_returns_payload_extras_field, test_put_null_clears, test_extras_cleared_removes_merge, test_restore_clean_state) will pass."
+  ],
+  "critical_code_review_comments": [
+    "routes/whatsapp.py update_whatsapp_config uses model_dump(exclude_none=True). For nullable-as-meaning fields (payload_extras), this loses the intent. Prefer exclude_unset=True for partial-update endpoints.",
+    "whatsapp_service.upsert_config payload_extras parsing correctly handles dict | JSON-string | empty-string | None | malformed-string. Good defensive coding.",
+    "_build_azmarq_payload sends every common AzMarq alias (from/senderMobile/senderMobileNumber/senderNumber + wabaId + headerType:NONE at root and in template) — this is a sensible safe-default for an under-specified BSP schema.",
+    "Outbox now stores provider/url/request_payload/response_body/response_status — good observability. response_body is correctly capped at 4000 chars; request_payload survives as a dict (BSON-friendly).",
+    "WhatsApp.jsx outbox <details> rows render Request payload + Response body + copy button — matches spec. Empty-textarea-equals-clear should arguably send `\"\"` to the backend instead of `null` to align with how the backend currently parses extras."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_whatsapp_payload_extras.py (NEW — 14 pytest cases: payload_extras round-trip, malformed handling, AzMarq payload shape, phone split, shallow-merge, outbox enrichment, fire-and-forget regression, final state restore)"
+  ],
+  "success_rate": {
+    "backend": "10/14 new (71%) + 10/10 regression (100%); 4 failures all stem from the single null-clear bug",
+    "frontend": "100% (textarea show/hide per provider, JSON validation inline error, save flow, outbox expand+copy+url+request payload+response body all verified)"
+  },
+  "test_credentials": "admin@acme.com / Admin@123 (super_admin); maya@acme.com / Demo@123 (employee).",
+  "seed_data_creation": "Final tenant WhatsApp config restored to: provider=azmarq, api_base_url=https://api.azmarq.com/v1/whatsapp, payload_extras=null (cleared via empty-string workaround), enabled=true, default_country_code=91, bogus access_token preserved. Outbox accumulated ~25+ test rows (audit-only, no cleanup needed).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run: REACT_APP_BACKEND_URL=https://workforce-central-43.preview.emergentagent.com pytest /app/backend/tests/test_whatsapp_payload_extras.py -v. The 4 currently-failing tests assert `payload_extras: null` clears the value — which is the spec but the bug. To validate via UI, clearing the textarea + Save currently leaves stale extras (see integration_issues). To clear, send empty-string in payload_extras at the API. Outbox tab is reachable at /admin/whatsapp → 'Outbox' subtab; rows are <details> elements that expand on click to show URL/Request payload/Response body. Copy button uses data-testid pattern wa-outbox-row-<id>.",
+  "rca of the issue": "Root cause: /app/backend/routes/whatsapp.py update_whatsapp_config does `payload = body.model_dump(exclude_none=True)`. Pydantic strips fields with value None. The whatsapp_service.upsert_config function checks `if 'payload_extras' in payload:` to differentiate 'set to None' vs 'not provided', but that branch can never fire when None values are pre-stripped by the route. Reproduction: (1) PUT {payload_extras: {a:1}} → stored; (2) GET → {a:1}; (3) PUT {payload_extras: null} → 200 OK, server returns previous value; (4) GET → {a:1} (NOT cleared). Mitigation options: (a) change route to `body.model_dump(exclude_unset=True)` — only drops fields the client didn't include; (b) explicitly extract payload_extras before model_dump and re-attach if it was None; (c) accept empty-string '' as the clear sentinel and have the frontend send '' instead of null when textarea is empty. Option (a) is cleanest and matches FastAPI best-practice for partial-update endpoints."
+}

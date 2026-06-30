@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api, { formatApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
   MessageCircle,
@@ -83,6 +84,8 @@ export default function WhatsAppSettings() {
   const [testOpen, setTestOpen] = useState(false);
   const [testForm, setTestForm] = useState({ to: "", template_key: "status_update" });
   const [testing, setTesting] = useState(false);
+  const [extrasText, setExtrasText] = useState("");
+  const [extrasError, setExtrasError] = useState("");
 
   const load = async () => {
     try {
@@ -94,6 +97,17 @@ export default function WhatsAppSettings() {
       setCfg(c.data);
       setSpecs(t.data);
       setOutbox(o.data || []);
+      // Initialize the JSON textarea from the saved payload_extras (if any)
+      if (c.data?.payload_extras) {
+        try {
+          setExtrasText(JSON.stringify(c.data.payload_extras, null, 2));
+        } catch {
+          setExtrasText("");
+        }
+      } else {
+        setExtrasText("");
+      }
+      setExtrasError("");
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail));
     }
@@ -107,6 +121,24 @@ export default function WhatsAppSettings() {
 
   const save = async () => {
     setSaving(true);
+    // Parse the optional JSON extras
+    let parsedExtras = null;
+    if (extrasText && extrasText.trim()) {
+      try {
+        parsedExtras = JSON.parse(extrasText);
+        if (typeof parsedExtras !== "object" || Array.isArray(parsedExtras)) {
+          throw new Error("Extras must be a JSON object");
+        }
+        setExtrasError("");
+      } catch (e) {
+        setExtrasError(e.message || "Invalid JSON");
+        setSaving(false);
+        toast.error("Payload extras: " + (e.message || "Invalid JSON"));
+        return;
+      }
+    } else {
+      setExtrasError("");
+    }
     try {
       const payload = {
         enabled: cfg.enabled,
@@ -115,6 +147,7 @@ export default function WhatsAppSettings() {
         business_account_id: cfg.business_account_id,
         default_country_code: cfg.default_country_code,
         api_base_url: cfg.api_base_url || "",
+        payload_extras: parsedExtras,
         events_enabled: cfg.events_enabled,
         status_filters: cfg.status_filters,
       };
@@ -310,6 +343,26 @@ export default function WhatsAppSettings() {
                   {providerLabels.baseUrlHelp} Current default: <span className="font-mono">{providerDefaultUrl}</span>
                 </p>
               </div>
+
+              {provider === PROVIDER_AZMARQ && (
+                <div className="md:col-span-2">
+                  <Label>Payload extras <span className="text-slate-400 font-normal">(advanced — JSON object)</span></Label>
+                  <Textarea
+                    className="mt-1.5 font-mono text-xs min-h-[140px]"
+                    placeholder={"{\n  \"senderMobile\": \"919876543210\",\n  \"campaignName\": \"hrmis-alerts\"\n}"}
+                    value={extrasText}
+                    onChange={(e) => setExtrasText(e.target.value)}
+                    data-testid="wa-payload-extras-textarea"
+                  />
+                  {extrasError ? (
+                    <p className="text-[11px] text-rose-600 mt-1">JSON error: {extrasError}</p>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Optional. These keys are <b>shallow-merged on top of</b> the default AzMarq payload at send-time. Use this to add/override any fields AzMarq&apos;s API requires for your account (e.g. a different sender field name, campaign ID, source channel). Leave empty for the default.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-end pt-2">
@@ -449,24 +502,55 @@ export default function WhatsAppSettings() {
                 <div className="text-sm text-slate-500 py-6 text-center">No messages sent yet.</div>
               )}
               {outbox.map((o) => (
-                <div key={o.id} className="py-3 flex items-start justify-between gap-3" data-testid={`wa-outbox-row-${o.id}`}>
-                  <div className="flex items-start gap-3">
-                    {o.status === "sent" ? (
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5" />
-                    ) : (
-                      <AlertCircle className="h-4 w-4 text-rose-600 mt-0.5" />
-                    )}
-                    <div>
-                      <div className="text-sm text-slate-900">
-                        <span className="font-mono text-xs text-slate-500">{o.template}</span> → <span className="font-medium">{o.to}</span>
+                <details key={o.id} className="py-3 group" data-testid={`wa-outbox-row-${o.id}`}>
+                  <summary className="flex items-start justify-between gap-3 cursor-pointer list-none">
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      {o.status === "sent" ? (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+                      ) : (
+                        <AlertCircle className="h-4 w-4 text-rose-600 mt-0.5 shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-sm text-slate-900 truncate">
+                          <span className="font-mono text-xs text-slate-500">{o.template}</span> → <span className="font-medium">{o.to}</span>
+                          {o.provider && <span className="ml-2 text-[10px] uppercase tracking-wider text-slate-400">{o.provider}</span>}
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-0.5 truncate">{o.created_at}{o.response_status != null && ` · HTTP ${o.response_status}`} {o.detail && <span>· {String(o.detail).slice(0, 140)}</span>}</div>
                       </div>
-                      <div className="text-[11px] text-slate-500 mt-0.5">{o.created_at} {o.detail && <span>· {String(o.detail).slice(0, 140)}</span>}</div>
                     </div>
+                    <Badge variant={o.status === "sent" ? "default" : "destructive"} className={o.status === "sent" ? "bg-emerald-600 shrink-0" : "shrink-0"}>
+                      {o.status}
+                    </Badge>
+                  </summary>
+                  <div className="mt-3 pl-7 space-y-3">
+                    {o.url && (
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">URL</div>
+                        <pre className="text-xs font-mono bg-slate-50 border border-slate-200 rounded p-2 whitespace-pre-wrap break-all">{o.url}</pre>
+                      </div>
+                    )}
+                    {o.request_payload && (
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1 flex items-center justify-between">
+                          <span>Request payload (sent to {o.provider || "provider"})</span>
+                          <button
+                            className="text-emerald-700 hover:text-emerald-800 normal-case tracking-normal text-[11px]"
+                            onClick={(e) => { e.preventDefault(); copy(JSON.stringify(o.request_payload, null, 2), "Request copied"); }}
+                          >
+                            <Copy className="h-3 w-3 inline mr-1" /> copy
+                          </button>
+                        </div>
+                        <pre className="text-xs font-mono bg-slate-50 border border-slate-200 rounded p-2 whitespace-pre-wrap max-h-72 overflow-auto">{JSON.stringify(o.request_payload, null, 2)}</pre>
+                      </div>
+                    )}
+                    {o.response_body && (
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">Response body</div>
+                        <pre className="text-xs font-mono bg-rose-50/40 border border-rose-100 rounded p-2 whitespace-pre-wrap max-h-60 overflow-auto">{o.response_body}</pre>
+                      </div>
+                    )}
                   </div>
-                  <Badge variant={o.status === "sent" ? "default" : "destructive"} className={o.status === "sent" ? "bg-emerald-600" : ""}>
-                    {o.status}
-                  </Badge>
-                </div>
+                </details>
               ))}
             </div>
           </div>
