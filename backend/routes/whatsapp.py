@@ -62,7 +62,10 @@ async def update_whatsapp_config(
     body: WhatsAppConfigUpdate,
     admin: dict = Depends(require_roles("super_admin", "hr")),
 ):
-    payload = body.model_dump(exclude_none=True)
+    # Use exclude_unset (not exclude_none) so an explicit `null` value from the
+    # client is forwarded to the upsert layer — this lets the admin clear
+    # fields like `payload_extras` by sending null.
+    payload = body.model_dump(exclude_unset=True)
     return await upsert_config(company_id_of(admin), payload)
 
 

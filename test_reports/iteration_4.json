@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 4 retest of the payload_extras=null clear bug fix (routes/whatsapp.py: model_dump exclude_unset). All 14 cases in test_whatsapp_payload_extras.py now PASS (previously 10/14). All 10 regression cases in test_whatsapp_provider.py still PASS. Added a new test file test_whatsapp_partial_update.py with 3 cases that explicitly verify the secondary scenario — partial PUT {enabled:true} (or {enabled:false}) must NOT wipe untouched fields (provider, access_token, phone_number_id, business_account_id, api_base_url, default_country_code, payload_extras) — all 3 PASS. Frontend UI flow verified end-to-end via Playwright: (a) seed extras={campaignName:UI_TEST,x:1} via textarea + Save, (b) reload loads JSON back into textarea, (c) clear textarea + Save, (d) reload shows empty textarea → confirms backend stored payload_extras=null. The previously-reported integration_issue (clearing payload_extras from UI sent null but backend silently dropped it) is RESOLVED. Fire-and-forget regression (WFH apply, leave apply) preserved — employee endpoints still return 200/201 even with bogus AzMarq creds. Final tenant state restored: provider=azmarq, api_base_url=https://api.azmarq.com/v1/whatsapp, payload_extras=null, enabled=true, default_country_code=91, phone_number_id=261186630417690, business_account_id=125892728400090.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_whatsapp_payload_extras.py",
+    "/app/backend/tests/test_whatsapp_partial_update.py",
+    "/app/backend/tests/test_whatsapp_provider.py",
+    "/app/test_reports/pytest/whatsapp_payload_extras.xml",
+    "/app/test_reports/pytest/whatsapp_partial_update.xml",
+    "/app/test_reports/pytest/whatsapp_provider.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Fix in routes/whatsapp.py line 68 (model_dump(exclude_unset=True)) is the correct, minimal, idiomatic FastAPI partial-update pattern. No regressions observed across 27 backend assertions.",
+    "whatsapp_service.upsert_config correctly distinguishes 'key absent' vs 'key=None' for payload_extras — verified clear semantics work whether None or empty-string is sent."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_whatsapp_partial_update.py (NEW — 3 pytest cases verifying partial PUT does not wipe untouched fields after the exclude_unset change)"
+  ],
+  "success_rate": {
+    "backend": "14/14 payload_extras (100%) + 3/3 partial_update (100%) + 10/10 regression (100%) = 27/27 (100%)",
+    "frontend": "100% — UI clear-and-save flow verified end-to-end via Playwright"
+  },
+  "test_credentials": "admin@acme.com / Admin@123 (super_admin); maya@acme.com / Demo@123 (employee).",
+  "seed_data_creation": "Tenant restored to clean state: provider=azmarq, api_base_url=https://api.azmarq.com/v1/whatsapp, payload_extras=null, enabled=true, default_country_code=91, phone_number_id=261186630417690, business_account_id=125892728400090. Outbox has additional ~10 test send rows accumulated (audit-only, no cleanup required).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The exclude_unset fix is verified clean. To re-run end-to-end: REACT_APP_BACKEND_URL=https://workforce-central-43.preview.emergentagent.com pytest /app/backend/tests/test_whatsapp_payload_extras.py /app/backend/tests/test_whatsapp_partial_update.py /app/backend/tests/test_whatsapp_provider.py -v. All 27 tests pass. The payload_extras clear path is now consistent across: dict, JSON-string, empty-string, and literal null — all four work. Frontend WhatsApp.jsx sends `parsedExtras = null` for empty textarea, which is now correctly persisted as null on the backend.",
+  "rca of the issue": "Original RCA from iteration_3 was correct: routes/whatsapp.py used model_dump(exclude_none=True) which stripped None values before upsert_config could see the explicit clear intent. The applied fix swaps to model_dump(exclude_unset=True) so only fields the client didn't include in the request body are dropped, while explicit nulls are forwarded. Verified by sending PUT {payload_extras: null} after PUT {payload_extras: {x:1}} — GET now returns null (confirmed in test_put_null_clears). Side-effect verified safe: partial PUT {enabled: true} does NOT cause other fields to be sent as None and overwrite stored values (test_partial_put_enabled_only_preserves_other_fields). No further mitigation required."
+}
