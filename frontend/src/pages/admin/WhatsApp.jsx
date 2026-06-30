@@ -76,6 +76,7 @@ export default function WhatsAppSettings() {
         phone_number_id: cfg.phone_number_id,
         business_account_id: cfg.business_account_id,
         default_country_code: cfg.default_country_code,
+        api_base_url: cfg.api_base_url || "",
         events_enabled: cfg.events_enabled,
         status_filters: cfg.status_filters,
       };
@@ -233,6 +234,20 @@ export default function WhatsAppSettings() {
                   data-testid="wa-country-code-input"
                 />
                 <p className="text-[11px] text-slate-400 mt-1">Prepended to phone numbers missing a country code.</p>
+              </div>
+
+              <div className="md:col-span-2">
+                <Label>WhatsApp API Base URL <span className="text-slate-400 font-normal">(optional)</span></Label>
+                <Input
+                  className="mt-1.5 font-mono text-xs"
+                  placeholder={cfg.default_api_base_url || "https://graph.facebook.com/v20.0"}
+                  value={cfg.api_base_url || ""}
+                  onChange={(e) => setCfg({ ...cfg, api_base_url: e.target.value })}
+                  data-testid="wa-api-base-url-input"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Leave blank to use Meta&apos;s default (<span className="font-mono">{cfg.default_api_base_url}</span>). Override only if you proxy the WhatsApp Cloud API or use an on-prem gateway. The path <span className="font-mono">{"/{phone_number_id}/messages"}</span> is appended automatically.
+                </p>
               </div>
             </div>
 

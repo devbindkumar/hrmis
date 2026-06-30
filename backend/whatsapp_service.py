@@ -20,6 +20,7 @@ logger = logging.getLogger("hrmis.whatsapp")
 
 GRAPH_API_VERSION = "v20.0"
 GRAPH_BASE_URL = "https://graph.facebook.com"
+DEFAULT_API_BASE_URL = f"{GRAPH_BASE_URL}/{GRAPH_API_VERSION}"
 
 DEFAULT_TEMPLATES = {
     "status_update": "hrmis_status_update",
@@ -84,6 +85,8 @@ async def get_config_public(company_id: str) -> Dict[str, Any]:
             "phone_number_id": "",
             "business_account_id": "",
             "default_country_code": "",
+            "api_base_url": "",
+            "default_api_base_url": DEFAULT_API_BASE_URL,
             "templates": DEFAULT_TEMPLATES.copy(),
             "events_enabled": DEFAULT_EVENTS_ENABLED.copy(),
             "status_filters": DEFAULT_STATUS_FILTERS.copy(),
@@ -97,6 +100,8 @@ async def get_config_public(company_id: str) -> Dict[str, Any]:
         "phone_number_id": cfg.get("phone_number_id", ""),
         "business_account_id": cfg.get("business_account_id", ""),
         "default_country_code": cfg.get("default_country_code", ""),
+        "api_base_url": cfg.get("api_base_url", ""),
+        "default_api_base_url": DEFAULT_API_BASE_URL,
         "templates": {**DEFAULT_TEMPLATES, **(cfg.get("templates") or {})},
         "events_enabled": {**DEFAULT_EVENTS_ENABLED, **(cfg.get("events_enabled") or {})},
         "status_filters": cfg.get("status_filters") or DEFAULT_STATUS_FILTERS.copy(),
@@ -108,9 +113,13 @@ async def upsert_config(company_id: str, payload: Dict[str, Any]) -> Dict[str, A
     existing = await db.whatsapp_configs.find_one({"company_id": company_id}, {"_id": 0}) or {}
 
     update: Dict[str, Any] = {"company_id": company_id}
-    for k in ("enabled", "phone_number_id", "business_account_id", "default_country_code"):
+    for k in ("enabled", "phone_number_id", "business_account_id", "default_country_code", "api_base_url"):
         if k in payload and payload[k] is not None:
-            update[k] = payload[k]
+            val = payload[k]
+            # normalise api_base_url: strip trailing slash, allow empty to reset to default
+            if k == "api_base_url" and isinstance(val, str):
+                val = val.strip().rstrip("/")
+            update[k] = val
 
     # Only overwrite token if a new one is supplied AND it is not the masked placeholder
     new_tok = payload.get("access_token")
@@ -182,7 +191,8 @@ async def send_template(
     if not to_clean:
         return {"sent": False, "error": "Invalid recipient phone"}
 
-    url = f"{GRAPH_BASE_URL}/{GRAPH_API_VERSION}/{phone_number_id}/messages"
+    base_url = (cfg.get("api_base_url") or DEFAULT_API_BASE_URL).rstrip("/")
+    url = f"{base_url}/{phone_number_id}/messages"
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",

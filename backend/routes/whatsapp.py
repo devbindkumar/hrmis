@@ -37,6 +37,7 @@ class WhatsAppConfigUpdate(BaseModel):
     phone_number_id: Optional[str] = None
     business_account_id: Optional[str] = None
     default_country_code: Optional[str] = None
+    api_base_url: Optional[str] = None
     templates: Optional[Dict[str, str]] = None
     events_enabled: Optional[Dict[str, bool]] = None
     status_filters: Optional[List[str]] = None
