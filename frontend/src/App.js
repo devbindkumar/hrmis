@@ -20,6 +20,7 @@ import AdminJobs from "@/pages/admin/Jobs";
 import AdminOrgChart from "@/pages/admin/OrgChart";
 import AdminCompanies from "@/pages/admin/Companies";
 import AdminPayroll from "@/pages/admin/Payroll";
+import AdminWhatsApp from "@/pages/admin/WhatsApp";
 
 import EmployeeToday from "@/pages/employee/Today";
 import MyLeave from "@/pages/employee/MyLeave";
@@ -68,6 +69,7 @@ function App() {
             <Route path="payroll" element={<AdminPayroll />} />
             <Route path="jobs" element={<AdminJobs />} />
             <Route path="companies" element={<AdminCompanies />} />
+            <Route path="whatsapp" element={<AdminWhatsApp />} />
             <Route path="settings" element={<AdminSettings />} />
           </Route>
 

@@ -55,3 +55,14 @@ A Human Resource Management Information System (HRMIS) web platform for companie
 
 ## Test Credentials
 See `/app/memory/test_credentials.md`.
+
+## 2026-06-30 — WhatsApp Business Cloud API Integration
+- Added per-tenant WhatsApp config (`whatsapp_configs` collection) + outbox audit (`whatsapp_outbox`)
+- New service files: `backend/whatsapp_service.py`, `backend/notification_service.py`
+- New admin API: `GET/PUT /api/whatsapp/config`, `POST /api/whatsapp/test`, `GET /api/whatsapp/outbox`, `GET /api/whatsapp/templates`
+- Hooked notifications into 5 trigger events (status change, leave apply, WFH apply, meeting scheduled, check-in/out)
+- Per-event toggle + per-status filter (skip Active/Offline by default)
+- New admin page: `/admin/whatsapp` with Configuration / Event triggers / Templates / Outbox / Setup guide tabs
+- 5 Meta-approval template specs delivered to customer for submission to WhatsApp Manager (UTILITY, en_US)
+- All notification calls are fire-and-forget safe — HR flows never break on WA failures
+- Token is stored encrypted-at-rest only via mongo (masked on every API response)

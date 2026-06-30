@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from auth import get_current_user, require_roles
 from db import get_db
 from email_service import send_email, render
+from notification_service import notify_leave_request
 from tenant import company_id_of
 
 router = APIRouter(prefix="/api/leave", tags=["leave"])
@@ -159,6 +160,18 @@ async def apply_leave(body: LeaveApply, user: dict = Depends(get_current_user)):
         "read": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
+
+    # WhatsApp notification to reporting manager (fire-and-forget safe)
+    await notify_leave_request(
+        company_id=company_id_of(user),
+        employee_user_id=user["id"],
+        employee_name=user["name"],
+        leave_type=body.leave_type,
+        start_date=body.start_date,
+        end_date=body.end_date,
+        reason=body.reason,
+    )
+
     doc.pop("_id", None)
     return doc
 

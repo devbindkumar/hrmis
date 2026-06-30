@@ -26,4 +26,5 @@ resend>=2.0.0
 # Misc
 python-dotenv>=1.0.1
 requests>=2.31.0
+httpx>=0.28.1
 tzdata>=2024.2

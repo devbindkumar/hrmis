@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from auth import get_current_user, require_roles
 from db import get_db
 from email_service import send_email, render
+from notification_service import notify_wfh_request
 from tenant import company_id_of
 
 router = APIRouter(prefix="/api/wfh", tags=["wfh"])
@@ -120,6 +121,16 @@ async def apply_wfh(body: WFHApply, user: dict = Depends(get_current_user)):
         "read": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
+
+    # WhatsApp to reporting manager
+    await notify_wfh_request(
+        company_id=cid,
+        employee_user_id=user["id"],
+        employee_name=user["name"],
+        date_str=body.date,
+        reason=body.reason,
+    )
+
     doc.pop("_id", None)
     return doc
 

@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from auth import get_current_user
 from db import get_db
 from email_service import send_email, render
+from notification_service import notify_meeting_scheduled
 from tenant import company_id_of
 
 router = APIRouter(prefix="/api/meetings", tags=["meetings"])
@@ -78,6 +79,16 @@ async def create_meeting(body: MeetingCreate, user: dict = Depends(get_current_u
                 f"<p>{body.description or ''}</p>",
             )
             await send_email(attendee["email"], f"Invite: {body.title}", html)
+
+    # WhatsApp to each attendee
+    await notify_meeting_scheduled(
+        company_id=company_id_of(user),
+        organizer_name=user["name"],
+        title=body.title,
+        starts_at=body.starts_at,
+        location=body.location or "Online",
+        attendee_user_ids=body.attendee_user_ids,
+    )
 
     doc.pop("_id", None)
     return doc

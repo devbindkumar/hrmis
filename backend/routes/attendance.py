@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from auth import get_current_user, require_roles
 from db import get_db
+from notification_service import notify_checkin_checkout, notify_status_update
 from tenant import company_id_of
 
 router = APIRouter(prefix="/api/attendance", tags=["attendance"])
@@ -77,6 +78,12 @@ async def check_out(user: dict = Depends(get_current_user)):
             "duration_seconds": duration_seconds,
         }},
     )
+    await notify_checkin_checkout(
+        company_id=company_id_of(user),
+        employee_user_id=user["id"],
+        action="Checked Out",
+        ts_iso=_now_iso(),
+    )
     updated = await db.attendance.find_one({"user_id": user["id"], "date": today}, {"_id": 0})
     return updated
 
@@ -89,6 +96,11 @@ async def set_status(body: StatusUpdate, user: dict = Depends(get_current_user))
         {"user_id": user["id"], "date": today},
         {"$set": {"current_status": body.status, "last_active": _now_iso()}},
         upsert=True,
+    )
+    await notify_status_update(
+        company_id=company_id_of(user),
+        employee_user_id=user["id"],
+        new_status=body.status,
     )
     return {"success": True, "status": body.status}
 
