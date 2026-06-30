@@ -1,0 +1,38 @@
+{
+  "summary": "Verified WhatsApp provider bug fix end-to-end. Backend: 10/10 pytest cases pass covering config shape (provider, supported_providers, provider_default_base_urls), provider persistence, invalid-provider silent drop, token persistence across provider switch, AzMarq verbatim URL routing (no /messages appending, no phone_number_id leak, no path duplication), Meta default URL with phone_number_id substitution, Meta custom URL with {phone_number_id} placeholder substitution, and fire-and-forget on leave/WFH apply with bogus AzMarq creds. Frontend: Configuration tab Provider dropdown (wa-provider-select) has both options, AzMarq helper text contains 'sendWaTemplate' + 'verbatim', Meta helper text contains '{phone_number_id}' placeholder, save persists across page reload. Bug is fully fixed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_whatsapp_provider.py",
+    "/app/test_reports/pytest/whatsapp_provider.xml",
+    "/app/backend/tests/backend_test.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "whatsapp_service.upsert_config silently drops invalid provider values (continue) — verified intentional per spec. Could optionally return a warning header for UX, but not required.",
+    "Outbox detail string format `[provider] URL → status body` is well-structured and acts as the source of truth for verifying routing — good.",
+    "send_template correctly substitutes {phone_number_id} placeholder for both Meta and AzMarq custom URLs and does NOT append any path; user-provided api_base_url is used verbatim.",
+    "AzMarq branch uses 'apikey' header (not Authorization Bearer) — matches AzMarq BSP contract.",
+    "Fire-and-forget pattern preserved: send_template never raises, always returns dict; leave/WFH apply succeed (200/201) even when WA send fails with bogus creds."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_whatsapp_provider.py (new — 10 pytest cases for AzMarq/Meta provider routing)"
+  ],
+  "success_rate": {
+    "backend": "100% (10/10 whatsapp provider tests pass)",
+    "frontend": "100% of provider-dropdown flow verified"
+  },
+  "test_credentials": "admin@acme.com / Admin@123 (super_admin); maya@acme.com / Demo@123 (employee).",
+  "seed_data_creation": "Test left tenant WhatsApp config in azmarq state as instructed: provider=azmarq, api_base_url=https://api.azmarq.com/v1/whatsapp/sendWaTemplate, enabled=true, phone_number_id=261186630417690, business_account_id=125892728400090, access_token=D4Kv...yAt3 (bogus). Outbox accumulated a few test entries with [azmarq]/[meta] detail strings (audit-only, no cleanup needed).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "WhatsApp regression suite: pytest /app/backend/tests/test_whatsapp_provider.py -v. Provider routing is verified via outbox 'detail' string which is `[provider] URL → status body`. Bogus creds are expected to return 4xx from the upstream provider — the test only asserts which URL/header was used, NOT delivery success. Frontend admin route is /admin/whatsapp; provider dropdown testid is 'wa-provider-select' with options 'Meta Cloud API (default)' and 'AzMarq (BSP gateway)'. Field labels in the Configuration tab adapt per provider (PROVIDER_FIELD_LABELS map).",
+  "rca of the issue": "Original bug: backend was hardcoded for Meta Graph API and appended `/{phone_number_id}/messages` to whatever api_base_url the super admin saved, producing `https://api.azmarq.com/v1/whatsapp/261186630417690/messages` → 404 from AzMarq. Fix verified: (1) new 'provider' field selects {meta, azmarq}; (2) api_base_url is now used VERBATIM (only `{phone_number_id}` literal placeholder is substituted), so the AzMarq endpoint stays at `https://api.azmarq.com/v1/whatsapp/sendWaTemplate`; (3) AzMarq branch uses `apikey` header instead of `Authorization: Bearer`; (4) payload shape differs per provider. Confirmed via outbox audit string `[azmarq] https://api.azmarq.com/v1/whatsapp/sendWaTemplate → 4xx ...`. No path duplication, no phone_number_id leak into URL."
+}

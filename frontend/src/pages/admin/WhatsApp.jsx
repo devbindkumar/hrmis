@@ -21,6 +21,43 @@ import {
   ExternalLink,
 } from "lucide-react";
 
+const PROVIDER_META = "meta";
+const PROVIDER_AZMARQ = "azmarq";
+
+const PROVIDER_LABELS = {
+  [PROVIDER_META]: "Meta Cloud API (default)",
+  [PROVIDER_AZMARQ]: "AzMarq (BSP gateway)",
+};
+
+const PROVIDER_FIELD_LABELS = {
+  [PROVIDER_META]: {
+    token: "System User Access Token",
+    tokenPh: "EAAG... (paste your System User token)",
+    phoneId: "Phone Number ID",
+    phoneIdPh: "e.g. 105954XXXXXXXX",
+    wabaId: "Business Account ID",
+    wabaIdPh: "e.g. 1234567890123456",
+    baseUrlHelp: (
+      <>
+        Paste the <b>full Meta send URL</b>. Use <span className="font-mono">{"{phone_number_id}"}</span> as a placeholder — it will be substituted at send-time. Leave blank to use the default below.
+      </>
+    ),
+  },
+  [PROVIDER_AZMARQ]: {
+    token: "AzMarq API Key",
+    tokenPh: "Paste your AzMarq apikey",
+    phoneId: "Sender ID (WABA sender number)",
+    phoneIdPh: "e.g. 919876543210",
+    wabaId: "WABA ID",
+    wabaIdPh: "Your WhatsApp Business Account ID",
+    baseUrlHelp: (
+      <>
+        Paste the <b>full AzMarq send URL</b> exactly as your account dashboard shows it (e.g. <span className="font-mono">https://api.azmarq.com/v1/whatsapp/sendWaTemplate</span>). The backend POSTs to this URL verbatim — no path appending. Leave blank to use the default below.
+      </>
+    ),
+  },
+};
+
 const EVENT_LABELS = {
   status_update: "Status changes (Break / WFH / Meeting)",
   leave_request: "Leave requests",
@@ -73,6 +110,7 @@ export default function WhatsAppSettings() {
     try {
       const payload = {
         enabled: cfg.enabled,
+        provider: cfg.provider || PROVIDER_META,
         phone_number_id: cfg.phone_number_id,
         business_account_id: cfg.business_account_id,
         default_country_code: cfg.default_country_code,
@@ -124,7 +162,12 @@ export default function WhatsAppSettings() {
     setCfg({ ...cfg, status_filters: next });
   };
 
-  const tokenPlaceholder = cfg.access_token_masked || "EAAG... (paste your System User token)";
+  const provider = cfg.provider || PROVIDER_META;
+  const providerLabels = PROVIDER_FIELD_LABELS[provider] || PROVIDER_FIELD_LABELS[PROVIDER_META];
+  const providerDefaultUrl =
+    (cfg.provider_default_base_urls && cfg.provider_default_base_urls[provider]) ||
+    cfg.default_api_base_url ||
+    "https://graph.facebook.com/v20.0";
 
   return (
     <div className="p-6 space-y-6 animate-fade-up" data-testid="admin-whatsapp">
@@ -187,12 +230,30 @@ export default function WhatsAppSettings() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <Label>WhatsApp Provider</Label>
+                <Select
+                  value={cfg.provider || PROVIDER_META}
+                  onValueChange={(v) => setCfg({ ...cfg, provider: v })}
+                >
+                  <SelectTrigger className="mt-1.5" data-testid="wa-provider-select"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {(cfg.supported_providers || [PROVIDER_META, PROVIDER_AZMARQ]).map((p) => (
+                      <SelectItem key={p} value={p}>{PROVIDER_LABELS[p] || p}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Choose how HRMIS reaches WhatsApp. Each provider uses a different URL, auth header, and payload shape — handled automatically.
+                </p>
+              </div>
+
               <div>
-                <Label className="flex items-center gap-1.5"><Key className="h-3.5 w-3.5" /> System User Access Token</Label>
+                <Label className="flex items-center gap-1.5"><Key className="h-3.5 w-3.5" /> {providerLabels.token}</Label>
                 <Input
                   type="password"
                   className="mt-1.5 font-mono text-xs"
-                  placeholder={tokenPlaceholder}
+                  placeholder={cfg.access_token_masked ? cfg.access_token_masked : providerLabels.tokenPh}
                   value={cfg.access_token || ""}
                   onChange={(e) => setCfg({ ...cfg, access_token: e.target.value })}
                   data-testid="wa-token-input"
@@ -203,10 +264,10 @@ export default function WhatsAppSettings() {
               </div>
 
               <div>
-                <Label>Phone Number ID</Label>
+                <Label>{providerLabels.phoneId}</Label>
                 <Input
                   className="mt-1.5"
-                  placeholder="e.g. 105954XXXXXXXX"
+                  placeholder={providerLabels.phoneIdPh}
                   value={cfg.phone_number_id || ""}
                   onChange={(e) => setCfg({ ...cfg, phone_number_id: e.target.value })}
                   data-testid="wa-phone-id-input"
@@ -214,10 +275,10 @@ export default function WhatsAppSettings() {
               </div>
 
               <div>
-                <Label>Business Account ID</Label>
+                <Label>{providerLabels.wabaId}</Label>
                 <Input
                   className="mt-1.5"
-                  placeholder="e.g. 1234567890123456"
+                  placeholder={providerLabels.wabaIdPh}
                   value={cfg.business_account_id || ""}
                   onChange={(e) => setCfg({ ...cfg, business_account_id: e.target.value })}
                   data-testid="wa-business-id-input"
@@ -237,16 +298,16 @@ export default function WhatsAppSettings() {
               </div>
 
               <div className="md:col-span-2">
-                <Label>WhatsApp API Base URL <span className="text-slate-400 font-normal">(optional)</span></Label>
+                <Label>WhatsApp API URL <span className="text-slate-400 font-normal">(full URL — optional)</span></Label>
                 <Input
                   className="mt-1.5 font-mono text-xs"
-                  placeholder={cfg.default_api_base_url || "https://graph.facebook.com/v20.0"}
+                  placeholder={providerDefaultUrl}
                   value={cfg.api_base_url || ""}
                   onChange={(e) => setCfg({ ...cfg, api_base_url: e.target.value })}
                   data-testid="wa-api-base-url-input"
                 />
                 <p className="text-[11px] text-slate-400 mt-1">
-                  Leave blank to use Meta&apos;s default (<span className="font-mono">{cfg.default_api_base_url}</span>). Override only if you proxy the WhatsApp Cloud API or use an on-prem gateway. The path <span className="font-mono">{"/{phone_number_id}/messages"}</span> is appended automatically.
+                  {providerLabels.baseUrlHelp} Current default: <span className="font-mono">{providerDefaultUrl}</span>
                 </p>
               </div>
             </div>

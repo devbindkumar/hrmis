@@ -33,6 +33,7 @@ router = APIRouter(prefix="/api/whatsapp", tags=["whatsapp"])
 
 class WhatsAppConfigUpdate(BaseModel):
     enabled: Optional[bool] = None
+    provider: Optional[str] = None
     access_token: Optional[str] = None
     phone_number_id: Optional[str] = None
     business_account_id: Optional[str] = None
