@@ -39,6 +39,8 @@ class WhatsAppConfigUpdate(BaseModel):
     business_account_id: Optional[str] = None
     default_country_code: Optional[str] = None
     api_base_url: Optional[str] = None
+    campaign_name: Optional[str] = None
+    header_text: Optional[str] = None
     payload_extras: Optional[Any] = None
     templates: Optional[Dict[str, str]] = None
     events_enabled: Optional[Dict[str, bool]] = None

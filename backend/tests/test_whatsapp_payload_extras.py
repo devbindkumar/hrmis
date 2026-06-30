@@ -124,6 +124,14 @@ class TestPayloadExtrasRoundTrip:
 # ---------- AzMarq payload shape & merge ----------
 
 class TestAzMarqPayloadShape:
+    """OBSOLETE — Iteration 5 rebuilt the AzMarq payload to match the customer's
+    working curl. The new 6-key shape (from/campaignName/to/templateName/components/type)
+    is verified in test_whatsapp_azmarq_v2_payload.py. The old shape assertions below
+    (countryCode/phoneNumber/wabaId/headerType:NONE/template-object/components-array)
+    are intentionally retired — payload schema legitimately changed.
+    """
+    pytestmark = pytest.mark.skip(reason="Old AzMarq payload shape retired in iteration 5 — see test_whatsapp_azmarq_v2_payload.py")
+
     def test_default_azmarq_payload_has_required_keys(self, admin_headers):
         _set_azmarq_base(admin_headers, payload_extras=None)
         r = requests.post(

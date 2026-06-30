@@ -109,6 +109,8 @@ async def get_config_public(company_id: str) -> Dict[str, Any]:
             "api_base_url": "",
             "default_api_base_url": DEFAULT_API_BASE_URL,
             "provider_default_base_urls": PROVIDER_DEFAULT_BASE_URLS,
+            "campaign_name": "",
+            "header_text": "",
             "payload_extras": None,
             "templates": DEFAULT_TEMPLATES.copy(),
             "events_enabled": DEFAULT_EVENTS_ENABLED.copy(),
@@ -128,6 +130,8 @@ async def get_config_public(company_id: str) -> Dict[str, Any]:
         "api_base_url": cfg.get("api_base_url", ""),
         "default_api_base_url": DEFAULT_API_BASE_URL,
         "provider_default_base_urls": PROVIDER_DEFAULT_BASE_URLS,
+        "campaign_name": cfg.get("campaign_name", ""),
+        "header_text": cfg.get("header_text", ""),
         "payload_extras": cfg.get("payload_extras"),
         "templates": {**DEFAULT_TEMPLATES, **(cfg.get("templates") or {})},
         "events_enabled": {**DEFAULT_EVENTS_ENABLED, **(cfg.get("events_enabled") or {})},
@@ -140,7 +144,10 @@ async def upsert_config(company_id: str, payload: Dict[str, Any]) -> Dict[str, A
     existing = await db.whatsapp_configs.find_one({"company_id": company_id}, {"_id": 0}) or {}
 
     update: Dict[str, Any] = {"company_id": company_id}
-    for k in ("enabled", "provider", "phone_number_id", "business_account_id", "default_country_code", "api_base_url"):
+    for k in (
+        "enabled", "provider", "phone_number_id", "business_account_id",
+        "default_country_code", "api_base_url", "campaign_name", "header_text",
+    ):
         if k in payload and payload[k] is not None:
             val = payload[k]
             # normalise api_base_url: strip trailing slash, allow empty to reset to default
@@ -247,50 +254,54 @@ def _build_azmarq_payload(
     waba_id: str,
     default_country_code: Optional[str] = None,
     payload_extras: Optional[Dict[str, Any]] = None,
+    campaign_name: Optional[str] = None,
+    header_text: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Build a payload that matches AzMarq's `sendWaTemplate` schema.
+    """Build a payload that matches AzMarq's `/v1/whatsapp` endpoint schema.
 
-    AzMarq's exact field names vary by API version / account configuration, so
-    we send the most-common aliases (`to`, `phoneNumber` + `countryCode`,
-    `senderMobile`, `from`, `wabaId`) and let AzMarq ignore the ones it doesn't
-    recognise. If the admin needs to override or add fields, they can supply a
-    `payload_extras` JSON object that gets shallow-merged on top.
+    Reference (working curl from the customer's account):
+        POST https://api.azmarq.com/v1/whatsapp
+        Headers: apikey: <key>, Content-Type: application/json
+        Body:
+        {
+            "from": "+919871277211",
+            "campaignName": "api-test",
+            "to": "918826471808",
+            "templateName": "status_update_v1",
+            "components": {
+                "body":   { "params": ["v1", "v2", ...] },
+                "header": { "type": "text", "text": "..." }
+            },
+            "type": "template"
+        }
 
-    Body params are sent using AzMarq's `bodyValues` array (plain strings),
-    and `headerType: "none"` is set explicitly because AzMarq returns
-    "Please Provide Header Type input" otherwise.
+    `sender_id` (configured as `phone_number_id` in our model) is the sender
+    WhatsApp number — we prepend a '+' if it's missing so the user can put
+    either `+919871277211` or `919871277211` in the config.
+
+    `payload_extras` is shallow-merged on top so the admin can add/override
+    any field AzMarq's account configuration demands.
     """
-    phone = _split_phone_for_azmarq(to_number, default_country_code)
-    lang = (language_code or "en_US").split("_", 1)[0]
+    # Sender — AzMarq expects E.164 with the '+'
+    from_e164 = sender_id or ""
+    if from_e164 and not from_e164.startswith("+"):
+        from_e164 = "+" + re.sub(r"\D", "", from_e164)
+
     payload: Dict[str, Any] = {
-        # Recipient — every alias AzMarq might recognise
+        "from": from_e164,
+        "campaignName": campaign_name or "hrmis-alerts",
         "to": to_number,
-        "countryCode": phone["countryCode"],
-        "phoneNumber": phone["phoneNumber"],
-        # Sender — every alias AzMarq might recognise
-        "from": sender_id,
-        "senderMobile": sender_id,
-        "senderMobileNumber": sender_id,
-        "senderNumber": sender_id,
-        # Account scope
-        "wabaId": waba_id,
-        # Header indicator at root (AzMarq's validator looks for this even if no header component)
-        "headerType": "NONE",
-        # Template body
-        "type": "Template",
-        "template": {
-            "name": template_name,
-            "languageCode": lang,
-            "language": {"code": lang},
-            "headerType": "NONE",
-            "components": [
-                {
-                    "type": "BODY",
-                    "bodyValues": [str(p) for p in params],
-                    "parameters": [{"type": "text", "text": str(p)} for p in params],
-                }
-            ],
+        "templateName": template_name,
+        "components": {
+            "body": {
+                "params": [str(p) for p in params],
+            },
+            "header": {
+                "type": "text",
+                "text": header_text or "HRMIS Notification",
+            },
         },
+        "type": "template",
     }
     if payload_extras and isinstance(payload_extras, dict):
         # shallow merge so admin can override any top-level key
@@ -379,6 +390,8 @@ async def send_template(
             waba_id=cfg.get("business_account_id") or "",
             default_country_code=cfg.get("default_country_code"),
             payload_extras=cfg.get("payload_extras"),
+            campaign_name=cfg.get("campaign_name"),
+            header_text=cfg.get("header_text"),
         )
     else:
         return {"sent": False, "error": f"Unsupported provider: {provider}"}

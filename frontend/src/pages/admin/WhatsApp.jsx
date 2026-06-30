@@ -147,6 +147,8 @@ export default function WhatsAppSettings() {
         business_account_id: cfg.business_account_id,
         default_country_code: cfg.default_country_code,
         api_base_url: cfg.api_base_url || "",
+        campaign_name: cfg.campaign_name || "",
+        header_text: cfg.header_text || "",
         payload_extras: parsedExtras,
         events_enabled: cfg.events_enabled,
         status_filters: cfg.status_filters,
@@ -345,11 +347,39 @@ export default function WhatsAppSettings() {
               </div>
 
               {provider === PROVIDER_AZMARQ && (
+                <>
+                  <div>
+                    <Label>Campaign name</Label>
+                    <Input
+                      className="mt-1.5"
+                      placeholder="hrmis-alerts"
+                      value={cfg.campaign_name || ""}
+                      onChange={(e) => setCfg({ ...cfg, campaign_name: e.target.value })}
+                      data-testid="wa-campaign-name-input"
+                    />
+                    <p className="text-[11px] text-slate-400 mt-1">AzMarq <span className="font-mono">campaignName</span> field. Required by their API.</p>
+                  </div>
+
+                  <div>
+                    <Label>Header text</Label>
+                    <Input
+                      className="mt-1.5"
+                      placeholder="HRMIS Notification"
+                      value={cfg.header_text || ""}
+                      onChange={(e) => setCfg({ ...cfg, header_text: e.target.value })}
+                      data-testid="wa-header-text-input"
+                    />
+                    <p className="text-[11px] text-slate-400 mt-1">Sent as <span className="font-mono">components.header.text</span> for templates that use a text header.</p>
+                  </div>
+                </>
+              )}
+
+              {provider === PROVIDER_AZMARQ && (
                 <div className="md:col-span-2">
                   <Label>Payload extras <span className="text-slate-400 font-normal">(advanced — JSON object)</span></Label>
                   <Textarea
                     className="mt-1.5 font-mono text-xs min-h-[140px]"
-                    placeholder={"{\n  \"senderMobile\": \"919876543210\",\n  \"campaignName\": \"hrmis-alerts\"\n}"}
+                    placeholder={"{\n  \"customField\": \"value\"\n}"}
                     value={extrasText}
                     onChange={(e) => setExtrasText(e.target.value)}
                     data-testid="wa-payload-extras-textarea"
@@ -358,7 +388,7 @@ export default function WhatsAppSettings() {
                     <p className="text-[11px] text-rose-600 mt-1">JSON error: {extrasError}</p>
                   ) : (
                     <p className="text-[11px] text-slate-400 mt-1">
-                      Optional. These keys are <b>shallow-merged on top of</b> the default AzMarq payload at send-time. Use this to add/override any fields AzMarq&apos;s API requires for your account (e.g. a different sender field name, campaign ID, source channel). Leave empty for the default.
+                      Optional. These keys are <b>shallow-merged on top of</b> the default AzMarq payload at send-time. Use this to add/override any field AzMarq&apos;s API requires for your account. Leave empty for the default.
                     </p>
                   )}
                 </div>

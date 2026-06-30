@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 5 verifies the AzMarq payload schema was rebuilt to match the customer's working curl (6 root keys: from, campaignName, to, templateName, components, type — with components={body:{params:[...]}, header:{type:'text', text:'...'}} and type:'template' at ROOT). All 17 NEW backend tests in test_whatsapp_azmarq_v2_payload.py PASS. The 5 obsolete shape tests in test_whatsapp_payload_extras.py::TestAzMarqPayloadShape (asserting legacy fields countryCode/phoneNumber/wabaId/headerType/template-object/components-array) were skipped via pytestmark with a reason pointing to the new file — schema legitimately changed per main-agent note. Frontend Playwright test verified: (a) campaign_name + header_text inputs visible when AzMarq selected, both hidden when Meta selected, (b) typing 'api-test' + 'text value' then Save → reload repopulates values, (c) UI tenant restored to azmarq. Fire-and-forget regression preserved (WFH/leave 201 even with bogus AzMarq creds — only edge case: maya's Casual balance exhausted, test fallback tries Sick/Earned and passes). Final tenant state: provider=azmarq, api_base_url=https://api.azmarq.com/v1/whatsapp, phone_number_id=+919871277211, campaign_name=api-test, header_text=text value, templates.status_update=status_update_v1, payload_extras=null, enabled=true.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_whatsapp_azmarq_v2_payload.py",
+    "/app/backend/tests/test_whatsapp_payload_extras.py",
+    "/app/backend/tests/test_whatsapp_partial_update.py",
+    "/app/backend/tests/test_whatsapp_provider.py",
+    "/app/test_reports/pytest/whatsapp_azmarq_v2_payload.xml",
+    "/app/test_reports/pytest/whatsapp_iter5_full.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "whatsapp_service._build_azmarq_payload now produces exactly 6 root keys matching the customer's curl. No legacy fields leak (verified by set-equality assertion against {from,campaignName,to,templateName,components,type}).",
+    "Sender '+' auto-prepend works correctly: storing '919871277211' or '+919871277211' both produce from='+919871277211'.",
+    "Defaults fallback: empty campaign_name → 'hrmis-alerts', empty header_text → 'HRMIS Notification'. Verified.",
+    "payload_extras still shallow-merges on top of the new payload (customField:'X' survives merge with all 6 base keys intact).",
+    "_split_phone_for_azmarq helper in whatsapp_service.py is now DEAD CODE — no longer referenced by _build_azmarq_payload. Recommend removing it (10 lines) or marking deprecated to keep the file lean. Non-blocking.",
+    "Frontend WhatsApp.jsx correctly renders campaign_name + header_text only when provider===PROVIDER_AZMARQ. Both data-testid attributes present.",
+    "Note: components docstring in _build_azmarq_payload shows the customer's working curl WITHOUT 'type' nested inside components — the implementation matches the docstring. The review request's literal text 'components:{..., type:\\'template\\'}' was ambiguous; we follow the docstring/curl which is canonical."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_whatsapp_azmarq_v2_payload.py (NEW — 17 pytest cases covering new 6-key shape, sender '+' normalization, defaults fallback, payload_extras merge, all 5 template types regression, fire-and-forget)",
+    "/app/backend/tests/test_whatsapp_payload_extras.py (skipped TestAzMarqPayloadShape class via pytestmark — 5 obsolete shape assertions retired)"
+  ],
+  "success_rate": {
+    "backend": "39/39 active (100%) + 5 skipped obsolete (test_whatsapp_provider 10/10, test_whatsapp_partial_update 3/3, test_whatsapp_payload_extras 9/9 active + 5 skipped, test_whatsapp_azmarq_v2_payload 17/17)",
+    "frontend": "100% — all 3 UI flows pass (AzMarq inputs visible+persist, Meta hides them, restore)"
+  },
+  "test_credentials": "admin@acme.com / Admin@123 (super_admin); maya@acme.com / Demo@123 (employee).",
+  "seed_data_creation": "Tenant left in iteration 5 final state: provider=azmarq, api_base_url=https://api.azmarq.com/v1/whatsapp, phone_number_id=+919871277211, campaign_name=api-test, header_text=text value, templates.status_update=status_update_v1, payload_extras=null, enabled=true, default_country_code='' (cleared by one test, then restored — note: TestRestoreFinalState does not re-set default_country_code; if needed, re-PUT default_country_code='91'). ~20 outbox rows accumulated (audit only).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All AzMarq payload schema work is verified. To re-run: REACT_APP_BACKEND_URL=https://workforce-central-43.preview.emergentagent.com pytest /app/backend/tests/test_whatsapp_*.py -v --tb=short (44 collected, 39 pass, 5 skip). The skipped tests in test_whatsapp_payload_extras.py::TestAzMarqPayloadShape are intentionally obsolete — DO NOT unskip without rewriting against the new 6-key shape. Note one minor gap: the final restore test in test_whatsapp_azmarq_v2_payload.py does not re-set default_country_code='91' (it was cleared by test_phone_split_fallback_last_10 in the old extras file, which is now skipped, so the cleared state shouldn't recur). If a future test depends on default_country_code, set it explicitly in setup. Also, _split_phone_for_azmarq in whatsapp_service.py is dead code post-iteration-5 — can be deleted.",
+  "rca of the issue": "Not a bug fix iteration. This iteration verified an intentional schema rewrite. The new _build_azmarq_payload produces exactly the customer's curl shape (6 root keys, components as DICT with body+header only, type:'template' at root). All previous payload-shape assertions (countryCode/phoneNumber/wabaId/headerType:'NONE'/template object/components array) are now obsolete and were correctly skipped. The customer's actual AzMarq creds may still return 400 ('API Key is Invalid or Expired!') from azmarq.com — that is outside scope; what we test is that OUR outgoing payload matches the customer's working curl byte-for-byte (verified via outbox.request_payload dict assertions)."
+}
