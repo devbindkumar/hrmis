@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { Navigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import api, { formatApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,6 +79,7 @@ const STATUS_OPTIONS = [
 ];
 
 export default function WhatsAppSettings() {
+  const { user } = useAuth();
   const [cfg, setCfg] = useState(null);
   const [specs, setSpecs] = useState(null);
   const [outbox, setOutbox] = useState([]);
@@ -114,6 +117,11 @@ export default function WhatsAppSettings() {
   };
 
   useEffect(() => { load(); }, []);
+
+  // Only super_admin can view this page — HR/manager get redirected to Overview.
+  if (user && user.role !== "super_admin") {
+    return <Navigate to="/admin" replace />;
+  }
 
   if (!cfg || !specs) {
     return <div className="p-6 text-sm text-slate-500">Loading WhatsApp settings…</div>;

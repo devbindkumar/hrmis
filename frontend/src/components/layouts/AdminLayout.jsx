@@ -27,7 +27,7 @@ const NAV = [
   { to: "/admin/jobs", label: "Jobs", icon: Briefcase },
   { to: "/admin/reports", label: "Reports", icon: BarChart3 },
   { to: "/admin/companies", label: "Companies", icon: Globe2 },
-  { to: "/admin/whatsapp", label: "WhatsApp", icon: MessageCircle },
+  { to: "/admin/whatsapp", label: "WhatsApp", icon: MessageCircle, superAdminOnly: true },
   { to: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
@@ -95,7 +95,7 @@ export default function AdminLayout() {
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1">
-          {NAV.map((n) => (
+          {NAV.filter((n) => !n.superAdminOnly || user?.role === "super_admin").map((n) => (
             <NavLink
               key={n.to}
               to={n.to}

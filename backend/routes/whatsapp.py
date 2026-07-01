@@ -1,6 +1,6 @@
 """Admin routes for WhatsApp Business integration.
 
-Endpoints (all require super_admin/hr role within the tenant):
+Endpoints (all require super_admin role only):
 - GET    /api/whatsapp/config         → current config (token masked)
 - PUT    /api/whatsapp/config         → upsert config
 - POST   /api/whatsapp/test           → send a test template to a phone
@@ -56,14 +56,14 @@ class TestSend(BaseModel):
 # ---------- routes ----------
 
 @router.get("/config")
-async def get_whatsapp_config(admin: dict = Depends(require_roles("super_admin", "hr"))):
+async def get_whatsapp_config(admin: dict = Depends(require_roles("super_admin"))):
     return await get_config_public(company_id_of(admin))
 
 
 @router.put("/config")
 async def update_whatsapp_config(
     body: WhatsAppConfigUpdate,
-    admin: dict = Depends(require_roles("super_admin", "hr")),
+    admin: dict = Depends(require_roles("super_admin")),
 ):
     # Use exclude_unset (not exclude_none) so an explicit `null` value from the
     # client is forwarded to the upsert layer — this lets the admin clear
@@ -75,7 +75,7 @@ async def update_whatsapp_config(
 @router.post("/test")
 async def test_send(
     body: TestSend,
-    admin: dict = Depends(require_roles("super_admin", "hr")),
+    admin: dict = Depends(require_roles("super_admin")),
 ):
     cid = company_id_of(admin)
     cfg = await get_config_public(cid)
@@ -93,12 +93,12 @@ async def test_send(
 
 
 @router.get("/outbox")
-async def outbox(admin: dict = Depends(require_roles("super_admin", "hr")), limit: int = 50):
+async def outbox(admin: dict = Depends(require_roles("super_admin")), limit: int = 50):
     return await list_outbox(company_id_of(admin), limit=limit)
 
 
 @router.get("/templates")
-async def template_specs(_: dict = Depends(require_roles("super_admin", "hr"))):
+async def template_specs(_: dict = Depends(require_roles("super_admin"))):
     """Return the Meta-approval template specs the customer must create.
 
     The customer copies these *exactly* into Meta WhatsApp Manager → Message

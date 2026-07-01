@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Search, Plus, Loader2, Mail, Pencil } from "lucide-react";
+import { Search, Plus, Loader2, Mail, Pencil, KeyRound, Eye, EyeOff, Copy } from "lucide-react";
 import { toast } from "sonner";
 import StatusPill from "@/components/StatusPill";
 import { useAuth } from "@/contexts/AuthContext";
@@ -161,6 +161,7 @@ export default function Employees() {
             employee={editing}
             departments={departments}
             canChangeRole={["super_admin","hr"].includes(user?.role)}
+            canResetPassword={user?.role === "super_admin"}
             onSaved={() => { setEditing(null); load(); }}
           />
         )}
@@ -169,7 +170,7 @@ export default function Employees() {
   );
 }
 
-function EditEmployeeDialog({ employee, departments, canChangeRole, onSaved }) {
+function EditEmployeeDialog({ employee, departments, canChangeRole, canResetPassword, onSaved }) {
   const [form, setForm] = useState({
     name: employee.name || "",
     department: employee.department || "",
@@ -262,12 +263,159 @@ function EditEmployeeDialog({ employee, departments, canChangeRole, onSaved }) {
           </div>
         )}
       </div>
+
+      {canResetPassword && (
+        <ResetPasswordSection employeeId={employee.id} employeeName={employee.name} />
+      )}
+
       <DialogFooter>
         <Button onClick={save} disabled={busy} className="bg-slate-900 hover:bg-slate-800 text-white" data-testid="ee-save">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save changes"}
         </Button>
       </DialogFooter>
     </DialogContent>
+  );
+}
+
+function ResetPasswordSection({ employeeId, employeeName }) {
+  const [open, setOpen] = useState(false);
+  const [pwd, setPwd] = useState("");
+  const [show, setShow] = useState(false);
+  const [notify, setNotify] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [lastSent, setLastSent] = useState(null);
+
+  const generate = () => {
+    const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    const lower = "abcdefghijkmnpqrstuvwxyz";
+    const digits = "23456789";
+    const symbols = "!@#$%&*";
+    const all = upper + lower + digits + symbols;
+    const pick = (s) => s[Math.floor(Math.random() * s.length)];
+    let out = pick(upper) + pick(lower) + pick(digits) + pick(symbols);
+    for (let i = 0; i < 8; i++) out += pick(all);
+    setPwd(out.split("").sort(() => Math.random() - 0.5).join(""));
+    setShow(true);
+  };
+
+  const submit = async () => {
+    if (pwd.length < 8) { toast.error("Password must be at least 8 characters"); return; }
+    setBusy(true);
+    try {
+      const { data } = await api.post(`/employees/${employeeId}/reset-password`, {
+        new_password: pwd,
+        notify_employee: notify,
+      });
+      setLastSent(data);
+      toast.success(notify ? `Password reset · email sent to ${data.email}` : "Password reset");
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail));
+    } finally { setBusy(false); }
+  };
+
+  const copyPwd = () => {
+    if (!pwd) return;
+    navigator.clipboard.writeText(pwd);
+    toast.success("Password copied to clipboard");
+  };
+
+  return (
+    <div className="mt-2 rounded-xl border border-amber-200/70 bg-amber-50/40 p-4" data-testid="reset-password-section">
+      <button
+        type="button"
+        className="w-full flex items-center justify-between gap-2 text-left"
+        onClick={() => setOpen(!open)}
+        data-testid="reset-password-toggle"
+      >
+        <div className="flex items-center gap-2">
+          <div className="h-8 w-8 rounded-lg bg-amber-100 text-amber-700 grid place-items-center">
+            <KeyRound className="h-4 w-4" strokeWidth={1.6} />
+          </div>
+          <div>
+            <div className="text-sm font-semibold text-slate-900">Reset {employeeName?.split(" ")[0] || "employee"}&apos;s password</div>
+            <div className="text-[11px] text-slate-500">For when the employee forgets their password. Generate a new one and (optionally) email it.</div>
+          </div>
+        </div>
+        <span className="text-xs text-amber-700 font-medium">{open ? "Hide" : "Open"}</span>
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-3">
+          <div>
+            <Label className="text-xs">New password</Label>
+            <div className="mt-1.5 flex items-center gap-2">
+              <div className="relative flex-1">
+                <Input
+                  type={show ? "text" : "password"}
+                  value={pwd}
+                  onChange={(e) => setPwd(e.target.value)}
+                  placeholder="Enter or generate a new password"
+                  className="pr-10 font-mono text-sm"
+                  data-testid="reset-password-input"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShow(!show)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
+                  aria-label={show ? "Hide password" : "Show password"}
+                >
+                  {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={generate}
+                className="shrink-0"
+                data-testid="reset-password-generate"
+              >
+                Generate
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={copyPwd}
+                disabled={!pwd}
+                className="shrink-0"
+                data-testid="reset-password-copy"
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1">Minimum 8 characters. Share only through a secure channel.</p>
+          </div>
+
+          <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+              checked={notify}
+              onChange={(e) => setNotify(e.target.checked)}
+              data-testid="reset-password-notify"
+            />
+            Email the new password to the employee automatically
+          </label>
+
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              onClick={submit}
+              disabled={busy || pwd.length < 8}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              data-testid="reset-password-submit"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <KeyRound className="h-3.5 w-3.5 mr-1.5" />}
+              Reset password
+            </Button>
+            {lastSent && (
+              <span className="text-[11px] text-emerald-700 font-medium" data-testid="reset-password-last-sent">
+                Reset done · {lastSent.notified ? "email sent" : "no email sent"}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

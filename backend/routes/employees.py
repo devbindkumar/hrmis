@@ -309,5 +309,64 @@ async def deactivate_employee(employee_id: str, admin: dict = Depends(require_ro
     return {"success": True}
 
 
+class ResetPassword(BaseModel):
+    new_password: str = Field(min_length=8, max_length=128)
+    notify_employee: bool = True
+
+
+@router.post("/{employee_id}/reset-password")
+async def reset_employee_password(
+    employee_id: str,
+    body: ResetPassword,
+    admin: dict = Depends(require_roles("super_admin")),
+):
+    """Super-admin resets an employee's login password.
+
+    The new password is hashed and stored on the user record. If
+    `notify_employee` is true, an email is sent with the temporary password
+    so the employee knows they can sign in again.
+    """
+    db = get_db()
+    cid = company_id_of(admin)
+    emp = await db.employees.find_one(
+        {"id": employee_id, "company_id": cid}, {"_id": 0}
+    )
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    user_id = emp.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Employee has no linked user account")
+
+    user = await db.users.find_one({"id": user_id}, {"_id": 0, "email": 1, "name": 1})
+    if not user:
+        raise HTTPException(status_code=404, detail="User account not found")
+
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "password_hash": hash_password(body.new_password),
+            "password_reset_by": admin.get("id"),
+            "password_reset_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+
+    if body.notify_employee and user.get("email"):
+        body_html = (
+            f"<p>Hi {user.get('name') or emp.get('name') or 'there'},</p>"
+            f"<p>Your HRMIS password has been reset by an administrator.</p>"
+            f"<p><b>Email:</b> {user['email']}<br/>"
+            f"<b>New temporary password:</b> {body.new_password}</p>"
+            f"<p>Please sign in and change it from your profile.</p>"
+        )
+        await send_email(
+            user["email"],
+            "Your HRMIS password has been reset",
+            render("Password reset", body_html, "Sign in", os.environ.get("FRONTEND_URL", "")),
+        )
+
+    return {"success": True, "email": user["email"], "notified": bool(body.notify_employee)}
+
+
 # fix import order issue
 import os  # noqa: E402
