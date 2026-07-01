@@ -22,7 +22,9 @@ export default function EmployeeLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [notifs, setNotifs] = useState([]);
+  const [logoBroken, setLogoBroken] = useState(false);
   const accent = user?.company?.accent_color || "#0f172a";
+  const showLogo = !!user?.company?.has_logo && !logoBroken;
 
   useEffect(() => {
     const load = async () => {
@@ -47,12 +49,13 @@ export default function EmployeeLayout() {
       <header className="bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link to="/employee" className="flex items-center gap-3">
-            {user?.company?.has_logo ? (
+            {showLogo ? (
               <div className="h-11 w-11 rounded-lg grid place-items-center shrink-0 bg-white border border-slate-200 p-1.5">
                 <img
                   src={`${process.env.REACT_APP_BACKEND_URL}/api/companies/${user.company.id}/logo`}
                   alt={user.company.name}
                   className="max-h-full max-w-full object-contain"
+                  onError={() => setLogoBroken(true)}
                   data-testid="emp-company-logo"
                 />
               </div>

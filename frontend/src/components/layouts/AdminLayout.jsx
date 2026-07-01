@@ -35,7 +35,9 @@ export default function AdminLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [notifs, setNotifs] = useState([]);
+  const [logoBroken, setLogoBroken] = useState(false);
   const accent = user?.company?.accent_color || "#0f172a";
+  const showLogo = !!user?.company?.has_logo && !logoBroken;
 
   useEffect(() => {
     const load = async () => {
@@ -64,7 +66,7 @@ export default function AdminLayout() {
       {/* Sidebar */}
       <aside className="w-64 shrink-0 bg-slate-950 text-slate-200 flex flex-col" data-testid="admin-sidebar">
         <div className="px-5 py-5 border-b border-slate-800/80 flex items-center gap-3">
-          {user?.company?.has_logo ? (
+          {showLogo ? (
             <div
               className="h-12 w-12 rounded-lg grid place-items-center shrink-0 bg-white/95 p-1.5"
               data-testid="sidebar-logo-wrap"
@@ -73,6 +75,7 @@ export default function AdminLayout() {
                 src={`${process.env.REACT_APP_BACKEND_URL}/api/companies/${user.company.id}/logo`}
                 alt={user.company.name}
                 className="max-h-full max-w-full object-contain"
+                onError={() => setLogoBroken(true)}
                 data-testid="sidebar-company-logo"
               />
             </div>
