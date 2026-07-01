@@ -1,3 +1,4 @@
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -366,7 +367,3 @@ async def reset_employee_password(
         )
 
     return {"success": True, "email": user["email"], "notified": bool(body.notify_employee)}
-
-
-# fix import order issue
-import os  # noqa: E402
