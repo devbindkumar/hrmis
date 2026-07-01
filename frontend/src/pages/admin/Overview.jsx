@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, UserCheck, House, CalendarDays, BellRing, ArrowUpRight, Sparkles, Users2 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from "recharts";
 import StatusPill from "@/components/StatusPill";
+import CheckInWidget from "@/components/CheckInWidget";
 import { Link } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -59,6 +60,9 @@ export default function AdminOverview() {
         </div>
         <div className="text-xs uppercase tracking-widest font-semibold text-slate-400">{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</div>
       </div>
+
+      {/* Personal check-in / check-out — available to admin, HR, manager, super_admin */}
+      <CheckInWidget testid="admin-checkin-widget" />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard testid="kpi-total" label="Total people" value={kpi.total_employees ?? 0} icon={Users} accent="bg-slate-900 text-white" hint="Active employees" />

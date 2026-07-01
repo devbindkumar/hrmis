@@ -46,19 +46,21 @@ export default function EmployeeLayout() {
     <div className="min-h-screen bg-slate-50" style={{ "--company-accent": accent }}>
       <header className="bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link to="/employee" className="flex items-center gap-2">
-            <div className="h-9 w-9 rounded-lg grid place-items-center overflow-hidden" style={{ background: accent }}>
-              {user?.company?.has_logo ? (
+          <Link to="/employee" className="flex items-center gap-3">
+            {user?.company?.has_logo ? (
+              <div className="h-11 w-11 rounded-lg grid place-items-center shrink-0 bg-white border border-slate-200 p-1.5">
                 <img
                   src={`${process.env.REACT_APP_BACKEND_URL}/api/companies/${user.company.id}/logo`}
                   alt={user.company.name}
-                  className="h-full w-full object-cover"
+                  className="max-h-full max-w-full object-contain"
                   data-testid="emp-company-logo"
                 />
-              ) : (
+              </div>
+            ) : (
+              <div className="h-9 w-9 rounded-lg grid place-items-center shrink-0" style={{ background: accent }}>
                 <Briefcase className="h-4 w-4 text-white" strokeWidth={1.5} />
-              )}
-            </div>
+              </div>
+            )}
             <div className="min-w-0">
               <div className="font-display text-base font-semibold text-slate-900 leading-none truncate max-w-[180px]">{user?.company?.name || "My HR"}</div>
               <div className="text-[10px] uppercase tracking-widest text-slate-400">My workspace</div>

@@ -1,0 +1,44 @@
+{
+  "summary": "Tested CheckInWidget on admin/HR/manager dashboards + sidebar/header logo fix. Backend attendance flow works flawlessly for all 3 admin roles (super_admin, HR, manager) — check-in, duplicate-check-in-400, status change, check-out all pass. CheckInWidget renders on /admin for all three roles and correctly transitions to the 'Wrapped up at HH:MM' band after check-out (no buttons after day complete — expected). CSS fix (object-contain, light background, padding) is correctly applied to both AdminLayout.jsx sidebar-company-logo and EmployeeLayout.jsx emp-company-logo. HOWEVER, a CRITICAL bug was uncovered: the seeded Acme Corp logo file stored via /api/companies/{id}/logo is only 10 bytes of literal ASCII text ('test logo\\n') served with Content-Type: image/png. Browsers cannot decode it → naturalWidth/Height = 0 → the <img> element renders as a broken image with alt-text overflowing the container (measured employee header: container 44x44 vs img rendered 42x64 — height overflows). This IS the 'logo hiding / not showing full logo' user complaint. The CSS fix alone cannot rescue an invalid image payload.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/companies/{id}/logo (Acme seed)", "issue": "Returns HTTP 200 image/png with body of 10 bytes = literal ASCII 'test logo\\n' — not a valid PNG. Any browser fails to decode → broken image. Root cause of the user-reported 'logo hiding' complaint. Backend fix: either replace seed with a real PNG binary, OR return 404 when logo_path points to a non-image blob so the FE fallback (Building2/Briefcase icon) renders."},
+      {"endpoint": "HEAD /api/companies/{id}/logo", "issue": "Returns 405 Method Not Allowed with Allow: POST (only the upload route is registered for HEAD). Add head=True or an explicit HEAD handler if pre-flight probes are ever needed. Non-blocking."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "EmployeeLayout emp-company-logo / AdminLayout sidebar-company-logo", "issue": "When has_logo=true but the stored logo blob is invalid (as with seeded Acme), the <img> renders as broken alt-text taller than its 44-48px container. Recommend adding `onError` handler on the <img> that unmounts and falls back to the Building2/Briefcase icon so bad server payloads degrade gracefully.", "selector": "[data-testid=\"emp-company-logo\"], [data-testid=\"sidebar-company-logo\"]", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "AdminOverview initial paint", "issues": ["ResponsiveContainer emits repeated console warnings 'width(-1) and height(-1)' from Recharts on initial render — cosmetic, but noisy in console."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_checkin_widget_flow.py",
+    "/app/test_reports/pytest/checkin_widget_flow.xml"
+  ],
+  "action_items": [
+    "REPLACE the seeded Acme Corp company.logo_path blob (currently 10 bytes of ASCII 'test logo\\n') with an actual PNG so the newly-styled logo container has something valid to render. Alternatively, update the seed to set has_logo=false when only a placeholder exists.",
+    "Add onError={()=>setBroken(true)} to <img data-testid=\"sidebar-company-logo\"> and <img data-testid=\"emp-company-logo\"> and fall back to the icon branch when the image fails to load. Defensive against future bad uploads.",
+    "(Nice-to-have) Optional: validate the uploaded logo bytes in POST /api/companies/{id}/logo — reject anything that PIL cannot open — so a garbage file can never end up in the DB in the first place."
+  ],
+  "critical_code_review_comments": [
+    "AdminLayout.jsx & EmployeeLayout.jsx: no onError fallback on <img>. If /logo returns a corrupt or non-image payload (as today), the broken-image UI + alt-text overflows the container. Add onError to hide the img and swap to fallback icon.",
+    "CheckInWidget.jsx line 42-45: catch block silently swallows /attendance/today errors ('// ignore — will retry on next action'). If the endpoint is permanently 500, the widget stays in Skeleton forever with no diagnostic. Consider setting a fallback state or a subtle 'unavailable' banner after N failed attempts.",
+    "CheckInWidget.jsx uses a 30s interval that only ticks re-renders for duration display; no polling of /attendance/today. If a status is changed in another tab the local widget won't reflect it until the next user action.",
+    "Backend companies.py GET /logo does not set immutable-cache headers and does not support HEAD; long-lived cache would improve perceived logo load time."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_checkin_widget_flow.py (new)"
+  ],
+  "success_rate": {"backend": "100% (4/4 attendance flow tests pass across 3 roles)", "frontend": "85% — widget flow verified for all 3 admin roles; logo CSS applied correctly; blocked by corrupt seed image data"},
+  "test_credentials": "admin@acme.com/Admin@123 (super_admin), jordan@acme.com/Demo@123 (hr), alex@acme.com/Demo@123 (manager), maya@acme.com/Demo@123 (employee)",
+  "seed_data_creation": "None. Left super_admin (admin@acme.com) in a checked-OUT / day-complete state as requested.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The CheckInWidget backend + UI integration is confirmed working for all three admin roles. Re-testing after the logo fix should: (1) hit GET /api/companies/{tenant-id}/logo and verify it returns >100 bytes of actual PNG data (open with PIL to be sure), (2) load /admin as admin@acme.com and read img.naturalWidth > 0 for [data-testid=\"sidebar-company-logo\"], (3) load /employee as maya@acme.com and read img.naturalWidth > 0 for [data-testid=\"emp-company-logo\"], (4) confirm container-fit math: renderedHeight <= containerHeight AND renderedWidth <= containerWidth. Because backend tests exercise real check-in state, run test_checkin_widget_flow.py first thing each iteration so residual state doesn't confuse UI tests — the module also self-heals by leaving each user checked-out.",
+  "rca of the issue": "USER-REPORTED BUG (logo hiding): Root cause is NOT CSS. The seeded Acme Corp logo record in mongo has logo_path pointing to a blob whose contents are literally the 10 ASCII bytes 'test logo\\n'. GET /api/companies/{id}/logo streams those 10 bytes back with Content-Type: image/png. Browsers see an invalid PNG signature and give up — naturalWidth=0, naturalHeight=0 — the <img> then renders the broken-image placeholder plus the alt attribute ('Acme Corp') which is what makes the image element visually overflow (measured 42x64 in a 44x44 container). Main agent's CSS changes (object-contain, bg-white/95, p-1.5, larger box) are all correctly applied and would work perfectly with a REAL PNG — proof: on the /login page a real logo (Inbox Matters Digital) renders and fits cleanly. Mitigation options in order of preference: (a) reseed with a real logo file; (b) validate image bytes on upload; (c) add onError fallback in the two layout components."
+}

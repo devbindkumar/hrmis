@@ -63,22 +63,28 @@ export default function AdminLayout() {
     >
       {/* Sidebar */}
       <aside className="w-64 shrink-0 bg-slate-950 text-slate-200 flex flex-col" data-testid="admin-sidebar">
-        <div className="px-5 py-5 border-b border-slate-800/80 flex items-center gap-2">
-          <div
-            className="h-9 w-9 rounded-lg grid place-items-center overflow-hidden"
-            style={{ background: user?.company?.accent_color || "rgba(255,255,255,0.1)" }}
-          >
-            {user?.company?.has_logo ? (
+        <div className="px-5 py-5 border-b border-slate-800/80 flex items-center gap-3">
+          {user?.company?.has_logo ? (
+            <div
+              className="h-12 w-12 rounded-lg grid place-items-center shrink-0 bg-white/95 p-1.5"
+              data-testid="sidebar-logo-wrap"
+            >
               <img
                 src={`${process.env.REACT_APP_BACKEND_URL}/api/companies/${user.company.id}/logo`}
                 alt={user.company.name}
-                className="h-full w-full object-cover"
+                className="max-h-full max-w-full object-contain"
                 data-testid="sidebar-company-logo"
               />
-            ) : (
+            </div>
+          ) : (
+            <div
+              className="h-10 w-10 rounded-lg grid place-items-center shrink-0"
+              style={{ background: user?.company?.accent_color || "rgba(255,255,255,0.1)" }}
+              data-testid="sidebar-logo-wrap"
+            >
               <Building2 className="h-4 w-4 text-white" strokeWidth={1.5} />
-            )}
-          </div>
+            </div>
+          )}
           <div className="min-w-0">
             <div className="font-display text-base font-semibold text-white truncate">{user?.company?.name || "Workspace"}</div>
             <div className="text-[10px] uppercase tracking-widest text-slate-400">HRMIS · {user?.role === "super_admin" ? "Admin" : user?.role}</div>
