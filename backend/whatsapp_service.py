@@ -111,6 +111,7 @@ async def get_config_public(company_id: str) -> Dict[str, Any]:
             "provider_default_base_urls": PROVIDER_DEFAULT_BASE_URLS,
             "campaign_name": "",
             "header_text": "",
+            "timezone": "Asia/Kolkata",
             "payload_extras": None,
             "templates": DEFAULT_TEMPLATES.copy(),
             "events_enabled": DEFAULT_EVENTS_ENABLED.copy(),
@@ -132,6 +133,7 @@ async def get_config_public(company_id: str) -> Dict[str, Any]:
         "provider_default_base_urls": PROVIDER_DEFAULT_BASE_URLS,
         "campaign_name": cfg.get("campaign_name", ""),
         "header_text": cfg.get("header_text", ""),
+        "timezone": cfg.get("timezone") or "Asia/Kolkata",
         "payload_extras": cfg.get("payload_extras"),
         "templates": {**DEFAULT_TEMPLATES, **(cfg.get("templates") or {})},
         "events_enabled": {**DEFAULT_EVENTS_ENABLED, **(cfg.get("events_enabled") or {})},
@@ -147,6 +149,7 @@ async def upsert_config(company_id: str, payload: Dict[str, Any]) -> Dict[str, A
     for k in (
         "enabled", "provider", "phone_number_id", "business_account_id",
         "default_country_code", "api_base_url", "campaign_name", "header_text",
+        "timezone",
     ):
         if k in payload and payload[k] is not None:
             val = payload[k]

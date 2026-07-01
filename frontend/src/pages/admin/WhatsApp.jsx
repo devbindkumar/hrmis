@@ -149,6 +149,7 @@ export default function WhatsAppSettings() {
         api_base_url: cfg.api_base_url || "",
         campaign_name: cfg.campaign_name || "",
         header_text: cfg.header_text || "",
+        timezone: cfg.timezone || "Asia/Kolkata",
         payload_extras: parsedExtras,
         events_enabled: cfg.events_enabled,
         status_filters: cfg.status_filters,
@@ -330,6 +331,27 @@ export default function WhatsAppSettings() {
                   data-testid="wa-country-code-input"
                 />
                 <p className="text-[11px] text-slate-400 mt-1">Prepended to phone numbers missing a country code.</p>
+              </div>
+
+              <div>
+                <Label>Timezone (for notification timestamps)</Label>
+                <Select
+                  value={cfg.timezone || "Asia/Kolkata"}
+                  onValueChange={(v) => setCfg({ ...cfg, timezone: v })}
+                >
+                  <SelectTrigger className="mt-1.5" data-testid="wa-timezone-select"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Asia/Kolkata">Asia/Kolkata (IST · UTC+5:30)</SelectItem>
+                    <SelectItem value="UTC">UTC</SelectItem>
+                    <SelectItem value="America/New_York">America/New_York (ET)</SelectItem>
+                    <SelectItem value="America/Los_Angeles">America/Los_Angeles (PT)</SelectItem>
+                    <SelectItem value="Europe/London">Europe/London (GMT/BST)</SelectItem>
+                    <SelectItem value="Asia/Dubai">Asia/Dubai (GST)</SelectItem>
+                    <SelectItem value="Asia/Singapore">Asia/Singapore (SGT)</SelectItem>
+                    <SelectItem value="Australia/Sydney">Australia/Sydney (AET)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-slate-400 mt-1">Timestamps in WhatsApp messages are formatted in this timezone.</p>
               </div>
 
               <div className="md:col-span-2">

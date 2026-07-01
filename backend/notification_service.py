@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from db import get_db
 from whatsapp_service import (
@@ -37,9 +38,51 @@ STATUS_LABELS = {
     "offline": "Offline",
 }
 
+# India Standard Time is the default because the customer's ops are India-based.
+# Admins can override via the `timezone` field on whatsapp_configs (any IANA
+# zone name, e.g. "America/New_York", "Europe/London").
+DEFAULT_TZ = "Asia/Kolkata"
+TZ_ABBRS = {
+    "Asia/Kolkata": "IST",
+    "Asia/Calcutta": "IST",
+    "UTC": "UTC",
+    "America/New_York": "ET",
+    "America/Los_Angeles": "PT",
+    "Europe/London": "GMT",
+}
 
-def _fmt_now() -> str:
-    return datetime.now(timezone.utc).strftime("%d %b %Y, %H:%M UTC")
+
+def _resolve_tz(tz_name: Optional[str]) -> ZoneInfo:
+    try:
+        return ZoneInfo(tz_name or DEFAULT_TZ)
+    except (ZoneInfoNotFoundError, Exception):
+        return ZoneInfo(DEFAULT_TZ)
+
+
+def _tz_abbr(tz_name: str) -> str:
+    return TZ_ABBRS.get(tz_name, tz_name.split("/")[-1])
+
+
+async def _tenant_tz(company_id: str) -> str:
+    cfg = await get_config(company_id) or {}
+    return cfg.get("timezone") or DEFAULT_TZ
+
+
+def _fmt_now(tz_name: str = DEFAULT_TZ) -> str:
+    tz = _resolve_tz(tz_name)
+    return datetime.now(tz).strftime("%d %b %Y, %H:%M ") + _tz_abbr(tz_name)
+
+
+def _fmt_iso(ts_iso: str, tz_name: str = DEFAULT_TZ) -> str:
+    """Convert an ISO-8601 timestamp (assumed UTC if naive) to a pretty string
+    in the given tenant timezone."""
+    try:
+        dt = datetime.fromisoformat(ts_iso.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(_resolve_tz(tz_name)).strftime("%d %b %Y, %H:%M ") + _tz_abbr(tz_name)
+    except Exception:
+        return ts_iso
 
 
 def _fmt_status(s: str) -> str:
@@ -193,11 +236,12 @@ async def notify_status_update(
             return
         emp_name = await _resolve_employee_name(company_id, employee_user_id)
         tmpl = await _template_name(company_id, "status_update")
+        tz_name = await _tenant_tz(company_id)
         params = [
             mgr.get("name", "Manager"),
             emp_name,
             _fmt_status(new_status),
-            _fmt_now(),
+            _fmt_now(tz_name),
         ]
         await send_template(company_id, mgr["phone"], tmpl, params)
     except Exception as e:
@@ -216,17 +260,12 @@ async def notify_checkin_checkout(
             return
         emp_name = await _resolve_employee_name(company_id, employee_user_id)
         tmpl = await _template_name(company_id, "checkin_checkout")
-        # Pretty time
-        when = ts_iso
-        try:
-            when = datetime.fromisoformat(ts_iso.replace("Z", "+00:00")).strftime("%d %b %Y, %H:%M UTC")
-        except Exception:
-            pass
+        tz_name = await _tenant_tz(company_id)
         params = [
             mgr.get("name", "Manager"),
             emp_name,
             action,
-            when,
+            _fmt_iso(ts_iso, tz_name),
         ]
         await send_template(company_id, mgr["phone"], tmpl, params)
     except Exception as e:

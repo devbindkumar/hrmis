@@ -41,6 +41,7 @@ class WhatsAppConfigUpdate(BaseModel):
     api_base_url: Optional[str] = None
     campaign_name: Optional[str] = None
     header_text: Optional[str] = None
+    timezone: Optional[str] = None
     payload_extras: Optional[Any] = None
     templates: Optional[Dict[str, str]] = None
     events_enabled: Optional[Dict[str, bool]] = None

@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 6 verifies per-tenant timezone support for WhatsApp notification timestamps. Created /app/backend/tests/test_whatsapp_timezone.py with 12 pytest cases — all 12 PASS. Verified: (1) GET /api/whatsapp/config returns `timezone` field; (2) PUT round-trip works for Asia/Kolkata/UTC/Europe/London/America/New_York; (3) Invalid IANA (Bogus/Zone) is stored but formatter falls back silently (no crash) — abbr = last segment 'Zone'; (4) When timezone=Asia/Kolkata, outbox row's request_payload.components.body.params[3] ends with 'IST' and equals current wall-clock in IST (±3-min tolerance); (5) Same for UTC → 'UTC' and America/New_York → 'ET'; (6) /api/attendance/check-in and /check-out produce params[3] ending in 'IST' when tenant tz=Asia/Kolkata; (7) Partial PUT {enabled:true} does NOT wipe saved timezone (verified after setting America/New_York); (8) HR endpoints (/api/leave/apply, /api/wfh/apply) still return 200/201 — leave dates '2027-03-15' pass through UN-reformatted (verified in outbox params). Full whatsapp regression suite: 51 passed, 5 skipped (obsolete). Frontend Playwright test verified: Timezone Select dropdown (data-testid='wa-timezone-select') visible with default 'Asia/Kolkata (IST · UTC+5:30)', REMAINS visible when provider is switched to Meta (confirms it's a general setting), all 8 IANA zones present in dropdown, selecting Europe/London and saving persists across page reload. Final tenant state restored per spec: provider=azmarq, api_base_url=https://api.azmarq.com/v1/whatsapp, phone_number_id=+919871277211, campaign_name=api-test, header_text='text value', templates.status_update=status_update_v1, timezone=Asia/Kolkata, payload_extras=null, default_country_code=91, enabled=true.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_whatsapp_timezone.py",
+    "/app/test_reports/pytest/whatsapp_timezone.xml",
+    "/app/test_reports/pytest/whatsapp_iter6_full.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "notification_service._resolve_tz correctly catches both ZoneInfoNotFoundError AND generic Exception (belt-and-braces) — falls back to DEFAULT_TZ='Asia/Kolkata'. Good defensive coding.",
+    "_tz_abbr uses a small hardcoded dict (IST/UTC/ET/PT/GMT) then falls back to the last IANA segment (e.g., 'Zone' for 'Bogus/Zone', 'Dubai' for 'Asia/Dubai'). Verified — invalid input never crashes.",
+    "_fmt_iso safely handles naive ISO timestamps by assuming UTC, and gracefully returns the raw string on parse failure.",
+    "get_config_public returns timezone='Asia/Kolkata' as default for BOTH no-config and null-value cases (uses `cfg.get('timezone') or 'Asia/Kolkata'`), matching frontend defaultValue. Consistent.",
+    "upsert_config includes 'timezone' in the partial-update field list — only updates when key is present in payload AND value is not None — so partial PUT {enabled:true} does NOT wipe tz. Verified by test.",
+    "Frontend Timezone Select is rendered UNCONDITIONALLY inside Configuration tab (NOT inside a provider===AZMARQ conditional) — correct per spec, since it's a general notification setting.",
+    "Leave/WFH template params still pass user-provided date strings verbatim — timezone is only applied to _fmt_now() and _fmt_iso(), never to user-supplied date strings. Verified.",
+    "Minor DRY note (non-blocking): _fmt_now and _fmt_iso duplicate the strftime+_tz_abbr concatenation — could factor into a single helper. Small file (73 lines of helpers), so no split needed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_whatsapp_timezone.py (NEW — 12 pytest cases across 6 classes covering GET/PUT round-trip, invalid IANA fallback, partial-PUT tz preservation, IST/UTC/ET wall-clock match, checkin-checkout tz, leave/WFH regression, final restore)"
+  ],
+  "success_rate": {
+    "backend": "12/12 iter6 timezone tests (100%); 51/51 active whatsapp regression tests pass (5 pre-existing skipped from iter5 remain skipped)",
+    "frontend": "100% — Timezone dropdown visible on both providers, all 8 zones present, London save+reload persists, restore to Kolkata works"
+  },
+  "test_credentials": "admin@acme.com / Admin@123 (super_admin); maya@acme.com / Demo@123 (employee — status update trigger).",
+  "seed_data_creation": "Tenant final state (post-cleanup via curl PUT): provider=azmarq, api_base_url=https://api.azmarq.com/v1/whatsapp, phone_number_id=+919871277211, default_country_code=91, campaign_name=api-test, header_text='text value', templates.status_update=status_update_v1, payload_extras=null, timezone=Asia/Kolkata, enabled=true. ~15 new outbox rows added during this iteration (status_update_v1 + hrmis_leave_request + hrmis_wfh_request from fire-and-forget calls with fake AzMarq key → all recorded 'failed' with 401/400 from api.azmarq.com, but request_payload persisted so timezone assertions succeed).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Timezone work verified end-to-end. To re-run: REACT_APP_BACKEND_URL=https://workforce-central-43.preview.emergentagent.com pytest /app/backend/tests/test_whatsapp_timezone.py -v (12 pass). For full regression: pytest /app/backend/tests/test_whatsapp_*.py -v (51 pass, 5 skip). Note maya's Casual leave balance was 0; leave regression test tries Sick first then Earned/Casual as fallback. WFH regression uses a random 2027 date to avoid duplicate-date 400s from prior iteration runs — if the random date collides, the test accepts 400 as legitimate (not a tz-related failure). The final tenant restore in pytest does not re-set default_country_code or payload_extras — I ran an out-of-band curl PUT after the run to normalise state to spec (timezone=Asia/Kolkata, payload_extras=null, default_country_code=91). If a future iteration needs 100% pytest-only restore, extend TestRestoreFinalState.test_restore_ist_default to include those two fields. TZ abbreviation logic: 'Asia/Kolkata'→IST, 'UTC'→UTC, 'America/New_York'→ET, 'America/Los_Angeles'→PT, 'Europe/London'→GMT, others → last IANA segment (e.g. 'Dubai', 'Singapore', 'Sydney', 'Zone').",
+  "rca of the issue": "Not a bug fix iteration — feature verification. The timezone support was implemented cleanly using stdlib zoneinfo. All acceptance criteria from the main-agent spec are met. One non-blocking observation: the hardcoded TZ_ABBRS dict maps only 5 zones; adding Asia/Dubai→'GST', Asia/Singapore→'SGT', Australia/Sydney→'AEDT/AEST' would make abbr more informative for the 3 remaining zones the UI offers (currently they'd show 'Dubai','Singapore','Sydney'). Not required by spec but a nice polish."
+}
