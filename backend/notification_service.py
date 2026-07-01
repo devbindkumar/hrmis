@@ -49,6 +49,9 @@ TZ_ABBRS = {
     "America/New_York": "ET",
     "America/Los_Angeles": "PT",
     "Europe/London": "GMT",
+    "Asia/Dubai": "GST",
+    "Asia/Singapore": "SGT",
+    "Australia/Sydney": "AET",
 }
 
 
