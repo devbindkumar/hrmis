@@ -88,6 +88,51 @@ def _fmt_iso(ts_iso: str, tz_name: str = DEFAULT_TZ) -> str:
         return ts_iso
 
 
+def _parse_meeting_dt(ts: str, tz_name: str = DEFAULT_TZ) -> Optional[datetime]:
+    """Parse a datetime string from the meeting form.
+
+    The frontend `<input type="datetime-local">` submits a NAIVE string like
+    ``2026-07-01T16:00`` — i.e. what the user typed, no timezone attached.
+    Users intend this in their own wall-clock (the tenant's timezone), so
+    for naive inputs we localize to the tenant TZ. For strings that already
+    carry an offset (``...+05:30`` or ``...Z``), we honour it and convert
+    to the tenant TZ. Returns ``None`` if the string is unparseable.
+    """
+    if not ts:
+        return None
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except Exception:
+        return None
+    tz = _resolve_tz(tz_name)
+    if dt.tzinfo is None:
+        # Wall-clock in tenant timezone
+        return dt.replace(tzinfo=tz)
+    return dt.astimezone(tz)
+
+
+def _fmt_meeting_range(starts_at: str, ends_at: Optional[str], tz_name: str) -> tuple[str, str]:
+    """Return (date_str, time_range_str) formatted for the meeting template.
+
+    Example output for a 4:00 pm → 4:30 pm IST meeting on 1 Jul 2026:
+        date_str       = "01 Jul 2026 (Wed)"
+        time_range_str = "04:00 pm → 04:30 pm IST"
+    """
+    start_dt = _parse_meeting_dt(starts_at, tz_name)
+    end_dt = _parse_meeting_dt(ends_at or "", tz_name) if ends_at else None
+    if not start_dt:
+        # Fall back to raw strings so nothing crashes
+        return (starts_at or "", ends_at or "")
+    date_str = start_dt.strftime("%d %b %Y (%a)")
+    start_hm = start_dt.strftime("%I:%M %p").lower()
+    if end_dt:
+        end_hm = end_dt.strftime("%I:%M %p").lower()
+        time_range = f"{start_hm} → {end_hm} {_tz_abbr(tz_name)}"
+    else:
+        time_range = f"{start_hm} {_tz_abbr(tz_name)}"
+    return (date_str, time_range)
+
+
 def _fmt_status(s: str) -> str:
     return STATUS_LABELS.get(s, s.replace("_", " ").title())
 
@@ -191,8 +236,18 @@ async def notify_wfh_request(
 async def notify_meeting_scheduled(
     *, company_id: str, organizer_name: str, title: str,
     starts_at: str, location: str, attendee_user_ids: List[str],
+    ends_at: Optional[str] = None,
 ) -> None:
-    """Notify every attendee. Sends per-attendee (only those with phone)."""
+    """Notify every attendee. Sends per-attendee (only those with phone).
+
+    Template variables (5): {attendee_name}, {organizer_name}, {title},
+    {date_str}, {time_range_str}. Times are always formatted in the tenant
+    timezone (default IST). Example variables produced from a 4:00 pm →
+    4:30 pm meeting on 1 Jul 2026:
+
+        date_str        = "01 Jul 2026 (Wed)"
+        time_range_str  = "04:00 pm → 04:30 pm IST"
+    """
     try:
         if not await _event_enabled(company_id, "meeting_scheduled"):
             return
@@ -204,11 +259,8 @@ async def notify_meeting_scheduled(
             {"_id": 0, "name": 1, "phone": 1, "user_id": 1},
         ).to_list(500)
         tmpl = await _template_name(company_id, "meeting_scheduled")
-        # Split "starts_at" ISO into date + time for cleaner template
-        date_part, time_part = starts_at, ""
-        if "T" in starts_at:
-            date_part, time_part = starts_at.split("T", 1)
-            time_part = time_part[:5]
+        tz_name = await _tenant_tz(company_id)
+        date_str, time_range = _fmt_meeting_range(starts_at, ends_at, tz_name)
         for att in attendees:
             phone = att.get("phone")
             if not phone:
@@ -217,8 +269,8 @@ async def notify_meeting_scheduled(
                 att.get("name", "there"),
                 organizer_name,
                 title,
-                date_part,
-                time_part or location or "—",
+                date_str,
+                time_range,
             ]
             await send_template(company_id, phone, tmpl, params)
     except Exception as e:

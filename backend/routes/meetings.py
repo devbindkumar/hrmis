@@ -86,6 +86,7 @@ async def create_meeting(body: MeetingCreate, user: dict = Depends(get_current_u
         organizer_name=user["name"],
         title=body.title,
         starts_at=body.starts_at,
+        ends_at=body.ends_at,
         location=body.location or "Online",
         attendee_user_ids=body.attendee_user_ids,
     )

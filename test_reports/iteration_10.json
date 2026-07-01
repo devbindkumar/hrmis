@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 10 backend testing for WhatsApp meeting time formatting fix. All 8 new meeting-time tests + 12 regression tests (iter6 timezone/checkin/status/leave/WFH) pass — 20/20 green.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_whatsapp_meeting_time.py",
+    "/app/test_reports/pytest/whatsapp_meeting_time.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "notification_service._fmt_meeting_range gracefully falls back to raw strings when starts_at is unparseable — good, no crash.",
+    "routes/meetings.py MeetingCreate declares ends_at as required (str). The 'missing ends_at' case is only reachable via a direct call to notify_meeting_scheduled — HTTP callers cannot omit it. That is fine per current UX but worth noting if any future flow (e.g. calendar sync) tries to omit it.",
+    "_parse_meeting_dt localizes naive datetimes via replace(tzinfo=tz) which is correct for fixed-offset zones and acceptable elsewhere; for DST-ambiguous local times (e.g. fall-back hours in America/New_York) this may pick the pre-transition offset. Not an issue for IST/UTC. Consider using zoneinfo-native constructors + `fold` if this becomes global."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_whatsapp_meeting_time.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (20/20)",
+    "frontend": "N/A (backend-only per request)"
+  },
+  "test_credentials": "admin@acme.com / Admin@123 (super_admin), maya@acme.com / Demo@123 (employee)",
+  "seed_data_creation": "Ensured Maya's employee record has a phone (+919999999999) so outbox rows get written. Left tenant config restored: enabled=true, provider=azmarq, timezone=Asia/Kolkata, templates.meeting_scheduled=meeting_scheduled_v1.",
+  "verified_scenarios": {
+    "naive_IST_input": "starts_at='2026-07-01T16:00', ends_at='2026-07-01T16:30' → params=[attendee, organizer, title, '01 Jul 2026 (Wed)', '04:00 pm → 04:30 pm IST']; exactly 5 params; arrow is U+2192; lowercase am/pm.",
+    "utc_offset_input": "starts_at='2026-07-01T10:30:00+00:00' + Asia/Kolkata tenant tz → '04:00 pm → 04:30 pm IST' (UTC+5:30 conversion applied).",
+    "tz_override_UTC": "PUT timezone=UTC, naive '16:00' input → '04:00 pm → 04:30 pm UTC' (wall-clock preserved). Restored to Asia/Kolkata after.",
+    "missing_ends_at": "Called notify_meeting_scheduled directly with ends_at='' → outbox written, time_range='04:00 pm IST' (no arrow), no exception.",
+    "garbage_timestamp": "POST /api/meetings with starts_at='garbage' → HR endpoint returned 200/201, outbox row contains raw strings, no crash in logs.",
+    "leading_zero_midnight_noon": "_fmt_meeting_range unit checks: 09:00 am (leading zero), 12:00 am (midnight), 12:00 pm (noon) — all correct.",
+    "regression_checkin_status_leave_wfh": "All 12 iter6 tests still pass; check-in/out format unchanged '%d %b %Y, %H:%M IST'."
+  },
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Test file /app/backend/tests/test_whatsapp_meeting_time.py is standalone (pytest -q). Requires REACT_APP_BACKEND_URL env var. Tenant is left in the exact state main-agent context requires: azmarq + Asia/Kolkata + meeting_scheduled_v1 template. Maya's employee record now has phone +919999999999.",
+  "rca of the issue": "N/A — this iteration was a verification pass of the previously-shipped fix; no bugs found. Fix ships: notify_meeting_scheduled(...ends_at=...) + _parse_meeting_dt (naive → tenant-tz wall-clock, aware → convert) + _fmt_meeting_range (date_str + time_range with lowercase am/pm and U+2192 arrow)."
+}
