@@ -180,6 +180,8 @@ function EditEmployeeDialog({ employee, departments, canChangeRole, canResetPass
     phone: employee.phone || "",
     manager_id: employee.manager_id || "",
     status: employee.status || "active",
+    shift_start_time: employee.shift_start_time || "",
+    late_grace_minutes: employee.late_grace_minutes ?? "",
   });
   const [busy, setBusy] = useState(false);
   const [managers, setManagers] = useState([]);
@@ -194,7 +196,14 @@ function EditEmployeeDialog({ employee, departments, canChangeRole, canResetPass
     }
     setBusy(true);
     try {
+      // Strip empty override fields so the backend keeps them null / falls through.
       const payload = { ...form, manager_id: form.manager_id || null };
+      if (!payload.shift_start_time) delete payload.shift_start_time;
+      if (payload.late_grace_minutes === "" || payload.late_grace_minutes === null) {
+        delete payload.late_grace_minutes;
+      } else {
+        payload.late_grace_minutes = Number(payload.late_grace_minutes);
+      }
       await api.patch(`/employees/${employee.id}`, payload);
       toast.success("Saved");
       onSaved();
@@ -263,6 +272,34 @@ function EditEmployeeDialog({ employee, departments, canChangeRole, canResetPass
             </Select>
           </div>
         )}
+
+        <div className="col-span-2 rounded-lg border border-slate-200 bg-slate-50/40 p-3">
+          <div className="text-xs font-semibold text-slate-700">Shift override <span className="font-normal text-slate-400">(optional — falls back to department, then company)</span></div>
+          <div className="grid grid-cols-2 gap-3 mt-2">
+            <div>
+              <Label className="text-[11px]">Shift starts at</Label>
+              <Input
+                type="time"
+                className="mt-1 font-mono"
+                value={form.shift_start_time}
+                onChange={(e) => setForm({ ...form, shift_start_time: e.target.value })}
+                data-testid="ee-shift-start"
+              />
+            </div>
+            <div>
+              <Label className="text-[11px]">Grace minutes</Label>
+              <Input
+                type="number" min="0" max="240"
+                className="mt-1"
+                placeholder="e.g. 15"
+                value={form.late_grace_minutes}
+                onChange={(e) => setForm({ ...form, late_grace_minutes: e.target.value })}
+                data-testid="ee-shift-grace"
+              />
+            </div>
+          </div>
+          <p className="text-[10px] text-slate-500 mt-1.5">Leave blank to inherit from the department or company default.</p>
+        </div>
       </div>
 
       {canResetPassword && (
