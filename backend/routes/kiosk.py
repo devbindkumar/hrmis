@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -223,3 +223,62 @@ async def kiosk_check_in(body: KioskAction):
 async def kiosk_check_out(body: KioskAction):
     company = await _require_kiosk(body.token)
     return await _perform_check_out(company["id"], body.employee_id)
+
+
+# ─── Admin-only activity feed ────────────────────────────────────────
+
+from auth import require_roles  # noqa: E402
+from tenant import company_id_of  # noqa: E402
+from fastapi import Depends, Query as FQuery  # noqa: E402
+
+
+@router.get("/activity")
+async def kiosk_activity(
+    admin: dict = Depends(require_roles("super_admin", "hr")),
+    limit: int = FQuery(default=20, ge=1, le=100),
+):
+    """Recent kiosk-driven attendance events for the current tenant.
+
+    Returns the last N ``check_in`` or ``check_out`` records that were
+    written by the face-scanner kiosk (``via='kiosk'`` or ``via_out='kiosk'``),
+    joined with the employee name + avatar. Perfect for an audit feed
+    on the admin dashboard.
+    """
+    db = get_db()
+    cid = company_id_of(admin)
+    q = {
+        "company_id": cid,
+        "$or": [{"via": "kiosk"}, {"via_out": "kiosk"}],
+    }
+    rows = await db.attendance.find(q, {"_id": 0}).sort([
+        ("check_in", -1), ("date", -1),
+    ]).to_list(limit * 2)  # over-fetch to account for split in/out events
+
+    events: List[Dict[str, Any]] = []
+    user_ids = list({r.get("user_id") for r in rows if r.get("user_id")})
+    if user_ids:
+        emps = await db.employees.find(
+            {"user_id": {"$in": user_ids}, "company_id": cid},
+            {"_id": 0, "user_id": 1, "name": 1, "avatar_url": 1},
+        ).to_list(len(user_ids))
+        emp_by_uid = {e["user_id"]: e for e in emps}
+    else:
+        emp_by_uid = {}
+
+    for r in rows:
+        emp = emp_by_uid.get(r.get("user_id")) or {}
+        base = {
+            "employee_user_id": r.get("user_id"),
+            "employee_name": emp.get("name") or "Unknown",
+            "avatar_url": emp.get("avatar_url"),
+            "date": r.get("date"),
+            "is_late": bool(r.get("is_late")),
+            "shift_start_time": r.get("shift_start_time"),
+        }
+        if r.get("via") == "kiosk" and r.get("check_in"):
+            events.append({**base, "action": "check_in", "at": r["check_in"]})
+        if r.get("via_out") == "kiosk" and r.get("check_out"):
+            events.append({**base, "action": "check_out", "at": r["check_out"]})
+
+    events.sort(key=lambda e: e["at"] or "", reverse=True)
+    return {"events": events[:limit], "total": len(events)}

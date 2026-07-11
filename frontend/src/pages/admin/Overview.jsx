@@ -5,6 +5,7 @@ import { Users, UserCheck, House, CalendarDays, BellRing, ArrowUpRight, Sparkles
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from "recharts";
 import StatusPill from "@/components/StatusPill";
 import CheckInWidget from "@/components/CheckInWidget";
+import KioskActivity from "@/components/KioskActivity";
 import { Link } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -62,7 +63,14 @@ export default function AdminOverview() {
       </div>
 
       {/* Personal check-in / check-out — available to admin, HR, manager, super_admin */}
-      <CheckInWidget testid="admin-checkin-widget" />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2">
+          <CheckInWidget testid="admin-checkin-widget" />
+        </div>
+        <div className="lg:col-span-1">
+          <KioskActivity limit={8} />
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard testid="kpi-total" label="Total people" value={kpi.total_employees ?? 0} icon={Users} accent="bg-slate-900 text-white" hint="Active employees" />

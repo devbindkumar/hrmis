@@ -28,6 +28,7 @@ from routes.payroll import router as payroll_router  # noqa: E402
 from routes.leave_types import router as leave_types_router  # noqa: E402
 from routes.whatsapp import router as whatsapp_router  # noqa: E402
 from routes.kiosk import router as kiosk_router  # noqa: E402
+from migrations import run_all as run_migrations  # noqa: E402
 from seed import ensure_indexes, seed_admin_and_demo  # noqa: E402
 from storage import init_storage  # noqa: E402
 from escalation import escalation_loop  # noqa: E402
@@ -87,6 +88,7 @@ async def on_startup():
     try:
         await ensure_indexes()
         await seed_admin_and_demo()
+        await run_migrations()
         init_storage()
         # Fire-and-forget background escalation loop
         import asyncio  # local import to avoid top-level dep noise

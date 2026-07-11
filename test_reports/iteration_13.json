@@ -1,0 +1,55 @@
+{
+  "summary": "Iteration 13 (startup migration + kiosk activity feed) verified end-to-end. All 13 new backend tests + full 42-test iter11/iter12 regression pass. Frontend admin Overview renders KioskActivity widget side-by-side with CheckInWidget on desktop (2:1 grid: 1072px + 528px), stacks on mobile. Populated state shows avatars, names, 'Checked in/out · X ago' subtitles, LogIn/LogOut icons, and amber 'Late' badges as spec'd.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/kiosk/activity (multi-tenant isolation)", "issue": "Verified via query filter code review + spot-check that returned employee_user_ids all belong to the current admin's tenant. Could not spin up a truly second tenant (no cross-tenant register API by design), so full A-vs-B isolation is not tested end-to-end — the code path (`{'company_id': cid, '$or': [{'via': 'kiosk'}, {'via_out': 'kiosk'}]}`) is unambiguous and safe."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter13_migration_and_kiosk_activity.py",
+    "/app/test_reports/pytest/iter13.xml",
+    "/app/test_reports/pytest/iter13_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "migrations.py: _flip_checkin_checkout_default is correctly idempotent — Mongo `update_many` with `$set` on a $eq:False filter is inherently a no-op once all rows are True. The 'flipped' log only fires when modified_count>0. This matches the docstring's KNOWN LIMITATION: any tenant that flips checkin_checkout back to False AFTER a prior migration run will get re-flipped to True on the next restart. By design, and correctly documented.",
+    "routes/kiosk.py `/activity`: uses `sort([('check_in', -1), ('date', -1)])` then a Python-side final `events.sort(key=lambda e: e['at'] or '', reverse=True)`. The DB-side sort by check_in DESC will not correctly rank rows where only check_out was via kiosk (via='web', via_out='kiosk'). The Python-side sort corrects it. Over-fetching `limit*2` provides headroom when both events on a row are emitted. Solid.",
+    "routes/kiosk.py: mixing keyword-only imports at the bottom of the file (`from auth import require_roles` inside the routes module) is slightly unusual but works. Consider moving to the top of the file next iteration for consistency.",
+    "Overview.jsx layout: `grid-cols-1 lg:grid-cols-3` with `lg:col-span-2` (CheckInWidget) + `lg:col-span-1` (KioskActivity) → 2:1 split on lg. Confirmed at 1920x1080: 1072px + 528px. Stacks on 390x844.",
+    "KioskActivity.jsx: 30-second polling via `setInterval(load, 30000)` with proper cleanup on unmount. Loading skeleton, empty state (with settings link), error state, and populated list all have data-testids. Well factored."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter13_migration_and_kiosk_activity.py (NEW — 13 tests)"
+  ],
+  "success_rate": {"backend": "100% (13/13 iter13 + 42/42 iter11+iter12 regression)", "frontend": "100% (widget renders, layout 2:1 desktop / stacked mobile, populated list confirmed)"},
+  "test_credentials": "admin@acme.com/Admin@123, jordan@acme.com/Demo@123, alex@acme.com/Demo@123, maya@acme.com/Demo@123 (all seeded).",
+  "seed_data_creation": "Temporary employee (TEST_kaudit_*) created + face-enrolled + kiosk check-in/out for E2E flow, then deleted in finally block. Kiosk events left in db.attendance from this test run remain visible in /api/kiosk/activity (as intended per problem statement — 'It's fine to leave kiosk events in db.attendance from earlier tests').",
+  "verified_scenarios": {
+    "migration_flips_false_to_true": "PUT False → restart backend → GET True; '[migration] flipped events_enabled.checkin_checkout on 1 tenant(s)' log line present.",
+    "migration_idempotent_second_restart": "Second restart after all rows are True → log-line count unchanged (no re-emission).",
+    "activity_super_admin_200": "GET /api/kiosk/activity as admin@acme.com returns {events, total} with all documented fields.",
+    "activity_hr_200": "jordan@acme.com (hr) can access /api/kiosk/activity.",
+    "activity_manager_403": "alex@acme.com (manager) → 403.",
+    "activity_employee_403": "maya@acme.com (employee) → 403.",
+    "activity_unauth_401": "Without Authorization header → 401/403.",
+    "limit_1_ok_100_ok_101_422_0_422": "All limit boundary cases behave as spec'd.",
+    "end_to_end_kiosk_write_read": "Rotated kiosk token → created temp employee → enrolled face (3 embeddings) → POST /kiosk/check-in → POST /kiosk/check-out → GET /kiosk/activity contains BOTH check_in and check_out events for that user_id, sorted DESC by 'at', at the top of the feed.",
+    "regression_iter12_shift_override_patch": "PATCH maya {shift_start_time:'10:45', late_grace_minutes:12} persists and GET reflects it; restored to 09:30/15 in teardown.",
+    "regression_iter11_full_suite": "33/33 iter11 tests still green after iter13 changes.",
+    "frontend_widget_present": "data-testid='kiosk-activity' rendered on /admin (Overview) after admin login.",
+    "frontend_layout_2_1_desktop": "At 1920x1080: CheckInWidget (top=172,left=280,width=1072) + KioskActivity (top=172,left=1368,width=528) — same row, 2:1 ratio.",
+    "frontend_layout_stacked_mobile": "At 390x844: KioskActivity below CheckInWidget (ka_top=715 > ci_top=372).",
+    "frontend_populated_state": "4 rows shown for acme after E2E test: 'TEST_kaudit_… Checked out · just now', '… Checked in · just now [Late]', 'Maya Patel Checked out · 31m ago', 'Maya Patel Checked in · 33m ago [Late]' — avatars, names, subtitles, in/out icons and 'Late' badges all render correctly.",
+    "frontend_auto_refresh_code_review": "KioskActivity.jsx uses setInterval(load, 30000) with cleanup — confirmed by static inspection (line 46)."
+  },
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 13 test file /app/backend/tests/test_iter13_migration_and_kiosk_activity.py includes a restart-backend test that shells out to `sudo supervisorctl restart backend`. Runs ~20s. Requires REACT_APP_BACKEND_URL. After this iteration acme has kiosk activity rows for maya (from iter11) and for a couple of TEST_kaudit_* employees (already deleted from /employees so their names in the feed will show as 'Unknown' after a while — the join is by user_id which no longer resolves). If a future test asserts a specific employee_name in activity, be aware of that. Migration state is safe: acme whatsapp_configs.events_enabled.checkin_checkout=True at end.",
+  "rca of the issue": "N/A — clean iteration. Both (a) startup migration and (b) kiosk activity feed shipped correctly. Only nit: full multi-tenant A-vs-B kiosk activity isolation would require a second seeded company + admin, which is not available today; verified via query-filter code review + returned-user-belongs-to-current-company spot check."
+}
