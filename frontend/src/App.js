@@ -21,6 +21,7 @@ import AdminOrgChart from "@/pages/admin/OrgChart";
 import AdminCompanies from "@/pages/admin/Companies";
 import AdminPayroll from "@/pages/admin/Payroll";
 import AdminWhatsApp from "@/pages/admin/WhatsApp";
+import KioskScan from "@/pages/kiosk/Scan";
 
 import EmployeeToday from "@/pages/employee/Today";
 import MyLeave from "@/pages/employee/MyLeave";
@@ -47,6 +48,9 @@ function App() {
           <Route path="/careers/:id" element={<JobDetail />} />
           <Route path="/c/:slug/careers" element={<CareersHome />} />
           <Route path="/c/:slug/careers/:id" element={<JobDetail />} />
+
+          {/* Public kiosk (face-scanner) — token-gated, unauthenticated */}
+          <Route path="/kiosk/scan" element={<KioskScan />} />
 
           {/* Admin */}
           <Route

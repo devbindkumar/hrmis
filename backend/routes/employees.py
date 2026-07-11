@@ -1,7 +1,7 @@
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, EmailStr, Field
@@ -37,6 +37,9 @@ class EmployeeUpdate(BaseModel):
     manager_id: Optional[str] = None
     status: Optional[str] = None
     avatar_url: Optional[str] = None
+    # Per-employee shift overrides for late-detection (falls back to dept, then company)
+    shift_start_time: Optional[str] = Field(default=None, pattern=r"^\d{1,2}:\d{2}$")
+    late_grace_minutes: Optional[int] = Field(default=None, ge=0, le=240)
 
 
 @router.get("")
@@ -367,3 +370,51 @@ async def reset_employee_password(
         )
 
     return {"success": True, "email": user["email"], "notified": bool(body.notify_employee)}
+
+
+# ─────────────────────────── face enrollment ──────────────────────────
+
+from face_service import (  # noqa: E402
+    DEFAULT_SAMPLES_REQUIRED,
+    delete_enrollment,
+    get_enrollment_status,
+    save_enrollment,
+)
+
+
+class FaceEnrollBody(BaseModel):
+    embeddings: List[List[float]] = Field(min_length=DEFAULT_SAMPLES_REQUIRED)
+    photos: Optional[List[str]] = None  # base64-encoded JPEGs (optional)
+
+
+@router.get("/{employee_id}/face")
+async def get_face_status(
+    employee_id: str,
+    admin: dict = Depends(require_roles("super_admin", "hr")),
+):
+    return await get_enrollment_status(company_id_of(admin), employee_id)
+
+
+@router.post("/{employee_id}/face")
+async def enroll_face(
+    employee_id: str,
+    body: FaceEnrollBody,
+    admin: dict = Depends(require_roles("super_admin", "hr")),
+):
+    try:
+        return await save_enrollment(
+            company_id=company_id_of(admin),
+            employee_id=employee_id,
+            embeddings=body.embeddings,
+            photos_b64=body.photos,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/{employee_id}/face")
+async def unenroll_face(
+    employee_id: str,
+    admin: dict = Depends(require_roles("super_admin", "hr")),
+):
+    return await delete_enrollment(company_id_of(admin), employee_id)

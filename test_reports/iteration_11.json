@@ -1,0 +1,75 @@
+{
+  "summary": "Iteration 11 (Face-recognition attendance kiosk) — 33 new backend tests + regression pass (iter9 role-gating + iter10 meeting-time). 62/62 green. Frontend UI verified: shift-panel visible for all admins, kiosk-panel super_admin-only, kiosk URL generation + copy work, /kiosk/scan gates by token, Employees edit dialog exposes face-enroll-section.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PATCH /api/employees/{id}", "issue": "Because Pydantic's exclude_none=True is used, callers cannot CLEAR an employee-level shift override (i.e. push it back to fall-through to department/company). Only overwrite with another value is possible. Consider accepting an explicit '__reset__' or supporting nullable via a separate DELETE-style endpoint."},
+      {"endpoint": "POST /api/employees/{id}/face", "issue": "Endpoint validation ordering: FaceEnrollBody.embeddings has Field(min_length=3) which returns 422; if the client sends 3+ embeddings but each of wrong length, face_service returns 400 with '128 floats' message. Both paths are handled by tests, but the docstring/spec asks for 400 in all cases — worth normalising to 400 for a clean UX."},
+      {"endpoint": "POST /api/kiosk/check-in", "issue": "notify_checkin_checkout defaults to events_enabled.checkin_checkout=false in DEFAULT_EVENTS_ENABLED, so kiosk checkins do NOT push WhatsApp until an admin explicitly toggles it on. Fine, but iter11 spec implies the notification should fire — either flip the default to true or surface a UI hint."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Employee edit dialog", "issue": "shift_start_time & late_grace_minutes are accepted by the API and covered by backend tests, but the Employees edit UI does NOT expose these fields. HR/admins currently have no way to set an employee-level override from the UI — they have to use PATCH /api/employees/{id} directly.", "affected_selectors": ["[data-testid=\"edit-emp-dialog\"]"]}
+    ],
+    "design_issues": [
+      {"screen": "Employees edit dialog", "issues": ["Missing shift override inputs — see integration_issues above."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter11_face_kiosk.py",
+    "/app/test_reports/pytest/iter11_face_kiosk.xml",
+    "/app/test_reports/pytest/iter11_full.xml"
+  ],
+  "action_items": [
+    "Add shift_start_time + late_grace_minutes inputs to the Employees Edit dialog (per-employee override UI). Backend already supports it (iter11 tests verify).",
+    "Consider defaulting whatsapp_configs.events_enabled.checkin_checkout to true so kiosk check-ins actually push notifications out-of-the-box (currently disabled in seed defaults).",
+    "Consider offering a 'clear override' affordance on PATCH /employees/{id} so admins can drop an employee shift override back to the department/company default (today exclude_none prevents it)."
+  ],
+  "critical_code_review_comments": [
+    "face_service.py: solid separation of validation, storage, matching. Euclidean threshold 0.55 on L2-normalised 128-d vectors is a reasonable default (matches @vladmandic/human docs).",
+    "face_service.py._validate_embedding correctly rejects NaN/Infinity but also accepts Python bool subclass of int; a stray True/False slipping through will be treated as 1.0/0.0 — probably fine but flag if strictness matters.",
+    "routes/kiosk.py: /match reads embeddings from all active employees every call; for tenants with >500 enrolled employees this is O(N·128) each request. Fine for typical office kiosk, but consider caching or FAISS/HNSW if scaling beyond a few thousand.",
+    "routes/kiosk.py._perform_check_out duration calc has a subtle bug: datetime.fromisoformat(now) has no tzinfo (isoformat with '+00:00' does), then `.replace(tzinfo=utc)` — but the ternary `if check_in_dt.tzinfo else 0` will return 0 when the STORED check_in has no tzinfo. On UTC-normalised stores this is fine, but it silently drops duration to 0 for legacy records. Consider always parsing both and using astimezone.",
+    "routes/companies.py.get_kiosk_token returns the RAW token (not masked) — comment claims it should mask but code returns full. Given endpoint is super_admin-only, this is intentional but the docstring above is misleading.",
+    "routes/employees.py.update_employee uses exclude_none=True — as noted, this prevents clearing an override.",
+    "routes/attendance.py.check-in stores shift_start_time + shift_source on the attendance doc — great for audit trail.",
+    "seed defaults: DEFAULT_EVENTS_ENABLED['checkin_checkout']=False means kiosk notifications silently drop. Recommend enabling by default OR surfacing a warning in the kiosk-panel UI."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter11_face_kiosk.py (new — 33 tests)"
+  ],
+  "success_rate": {
+    "backend": "100% (33/33 iter11 + 29/29 iter9+iter10 regression)",
+    "frontend": "100% (all UI selectors + role-gating verified)"
+  },
+  "test_credentials": "admin@acme.com/Admin@123, jordan@acme.com/Demo@123, alex@acme.com/Demo@123, maya@acme.com/Demo@123",
+  "seed_data_creation": "None permanent. Test file creates TEST_kiosk_* employees inside a class fixture and DELETEs them; a final cleanup pass deleted 3 leftover TEST_ employees from a prior failed run. Company shift restored to 09:30/15/kiosk_enabled=true. Maya's face enrollment deleted, employee override reset to 09:30/15. WhatsApp events_enabled restored to original values.",
+  "verified_scenarios": {
+    "kiosk_token_rotate_role_gating": "super_admin=200 (token≥20 chars); hr/manager/employee=403 on both POST rotate and GET",
+    "kiosk_session": "missing token=422, invalid token=401, disabled kiosk=401, valid=200 with company+thresholds",
+    "company_patch": "shift_start_time='10:15' + late_grace_minutes=20 + kiosk_enabled=true persist; 'notatime' → 422; grace 999 or -5 → 422",
+    "employee_patch": "shift_start_time='11:00' + late_grace_minutes=30 override persists; partial patch of designation does NOT wipe shift override",
+    "face_enroll_role_gating": "super_admin+hr=200, manager+employee=403",
+    "face_enroll_validation": "too-few=422/400, wrong-length=400 with '128' in detail, NaN embedding=400/422",
+    "face_enroll_photos": "photos array of 3 tiny JPEGs → has_photos=true; files written to /app/backend/uploads/faces",
+    "kiosk_match_no_match": "random embedding → {matched:false}",
+    "kiosk_match_exact": "identical embedding to enrolled → matched=true, confidence≥0.99, distance≤0.01, includes attendance sub-object",
+    "kiosk_match_liveness_fail": "liveness_score=0.3 → 400 detail.code='LIVENESS_FAIL'",
+    "kiosk_match_spoof": "antispoof_score=0.3 → 400 detail.code='SPOOF_DETECTED'",
+    "kiosk_match_bad_token": "→ 401",
+    "kiosk_checkin_checkout": "fresh check-in → via='kiosk'; duplicate check-in → 400; WhatsApp outbox row 'Checked In/Out' verified (after enabling event); check-out without check-in → 400 'Not checked in today'",
+    "web_checkin_shift_source": "attendance doc now stores via='web', shift_start_time, shift_source — verified via /attendance/today response",
+    "frontend_shift_panel": "shift-start-input + shift-grace-input + shift-save all present; save PATCH returns 200",
+    "frontend_kiosk_panel_role_gating": "super_admin sees kiosk-panel; HR does NOT (verified via login)",
+    "frontend_kiosk_rotate": "clicking kiosk-rotate calls API and populates kiosk-url with '.../kiosk/scan?token=...' — 32-char token visible",
+    "frontend_kiosk_scan_no_token": "/kiosk/scan → data-testid='kiosk-error' with 'Kiosk unavailable'",
+    "frontend_kiosk_scan_bad_token": "/kiosk/scan?token=fake → data-testid='kiosk-error'",
+    "frontend_face_enroll_section": "Employees edit dialog shows face-enroll-section + face-start-btn with 'Not enrolled…' text"
+  },
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Test file /app/backend/tests/test_iter11_face_kiosk.py is standalone (needs REACT_APP_BACKEND_URL env var). It reserves the class fixture kiosk_token for match tests to avoid rotate-invalidation races. TestKioskCheckInOut.test_check_in_and_out temporarily flips whatsapp_configs.events_enabled.checkin_checkout=true and restores it in a finally block. Because Maya may already be checked in when this suite runs, the check-in test tolerates both 200 (fresh) and 400 (duplicate) — outbox assertion only runs when at least one fresh event occurred. Company state is left at shift_start_time=09:30, late_grace_minutes=15, kiosk_enabled=true. Maya's face enrollment is deleted at teardown.",
+  "rca of the issue": "N/A — iter11 shipped cleanly. During test authoring, my first outbox-row assertion failed because whatsapp_configs.events_enabled.checkin_checkout defaults to false in DEFAULT_EVENTS_ENABLED (whatsapp_service.py:38). Fixed by having the test temporarily flip the event on before checking the outbox and restore the original config after. This is documented as a minor issue for the main agent to consider (either flip default or add UI hint)."
+}

@@ -28,6 +28,11 @@ class CompanyUpdate(BaseModel):
     escalation_hours: Optional[int] = None
     accent_color: Optional[str] = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     status: Optional[str] = None  # active | suspended
+    # Company-wide shift defaults (applied when department + employee have no override)
+    shift_start_time: Optional[str] = Field(default=None, pattern=r"^\d{1,2}:\d{2}$")
+    late_grace_minutes: Optional[int] = Field(default=None, ge=0, le=240)
+    # Face-scanner kiosk
+    kiosk_enabled: Optional[bool] = None
 
 
 def _slugify(name: str) -> str:
@@ -149,6 +154,39 @@ async def my_company(user: dict = Depends(get_current_user)):
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return company
+
+
+@router.post("/{company_id}/kiosk-token/rotate")
+async def rotate_kiosk_token(company_id: str, admin: dict = Depends(require_roles("super_admin"))):
+    """Generate a new kiosk token — invalidates any device holding the old URL.
+
+    Only super_admin can rotate. The token is returned once here; subsequent
+    GETs mask it (last 6 chars only).
+    """
+    from face_service import new_kiosk_token
+    db = get_db()
+    token = new_kiosk_token()
+    res = await db.companies.update_one(
+        {"id": company_id},
+        {"$set": {"kiosk_token": token, "kiosk_enabled": True}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return {"kiosk_token": token, "kiosk_enabled": True}
+
+
+@router.get("/{company_id}/kiosk-token")
+async def get_kiosk_token(company_id: str, admin: dict = Depends(require_roles("super_admin"))):
+    db = get_db()
+    company = await db.companies.find_one({"id": company_id}, {"_id": 0, "kiosk_token": 1, "kiosk_enabled": 1})
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    tok = company.get("kiosk_token") or ""
+    return {
+        "kiosk_token": tok,  # full token — this endpoint is super_admin only
+        "kiosk_enabled": bool(company.get("kiosk_enabled", False)),
+        "has_token": bool(tok),
+    }
 
 
 

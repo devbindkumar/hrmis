@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from auth import get_current_user, require_roles
 from db import get_db
+from face_service import is_check_in_late, resolve_shift_config
 from notification_service import notify_checkin_checkout, notify_status_update
 from tenant import company_id_of
 
@@ -41,17 +42,29 @@ async def check_in(user: dict = Depends(get_current_user)):
     existing = await db.attendance.find_one({"user_id": user["id"], "date": today}, {"_id": 0})
     if existing and existing.get("check_in"):
         raise HTTPException(status_code=400, detail="Already checked in today")
+
+    # Resolve the effective shift + tenant timezone for accurate late-detection
+    cid = company_id_of(user)
+    emp_doc = await db.employees.find_one({"user_id": user["id"], "company_id": cid}, {"_id": 0, "id": 1})
+    shift = await resolve_shift_config(company_id=cid, employee_id=(emp_doc or {}).get("id"))
+    wa = await db.whatsapp_configs.find_one({"company_id": cid}, {"_id": 0, "timezone": 1}) or {}
+    tz_name = wa.get("timezone") or "Asia/Kolkata"
+    late = is_check_in_late(now, shift["shift_start_time"], shift["late_grace_minutes"], tz_name)
+
     doc = {
         "id": existing["id"] if existing else str(uuid.uuid4()),
         "user_id": user["id"],
-        "company_id": company_id_of(user),
+        "company_id": cid,
         "date": today,
         "check_in": now,
         "check_out": None,
         "status": "present",
         "current_status": "active",
         "breaks": [],
-        "is_late": datetime.now(timezone.utc).hour >= 9 and datetime.now(timezone.utc).minute > 15,
+        "is_late": late,
+        "via": "web",
+        "shift_start_time": shift["shift_start_time"],
+        "shift_source": shift["source"],
     }
     await db.attendance.update_one({"user_id": user["id"], "date": today}, {"$set": doc}, upsert=True)
     doc.pop("_id", None)

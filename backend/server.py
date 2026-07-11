@@ -27,6 +27,7 @@ from routes.companies import router as companies_router  # noqa: E402
 from routes.payroll import router as payroll_router  # noqa: E402
 from routes.leave_types import router as leave_types_router  # noqa: E402
 from routes.whatsapp import router as whatsapp_router  # noqa: E402
+from routes.kiosk import router as kiosk_router  # noqa: E402
 from seed import ensure_indexes, seed_admin_and_demo  # noqa: E402
 from storage import init_storage  # noqa: E402
 from escalation import escalation_loop  # noqa: E402
@@ -78,6 +79,7 @@ app.include_router(companies_router)
 app.include_router(payroll_router)
 app.include_router(leave_types_router)
 app.include_router(whatsapp_router)
+app.include_router(kiosk_router)
 
 
 @app.on_event("startup")

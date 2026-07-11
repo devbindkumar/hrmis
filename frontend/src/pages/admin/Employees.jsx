@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Search, Plus, Loader2, Mail, Pencil, KeyRound, Eye, EyeOff, Copy } from "lucide-react";
+import FaceEnroll from "@/components/FaceEnroll";
 import { toast } from "sonner";
 import StatusPill from "@/components/StatusPill";
 import { useAuth } from "@/contexts/AuthContext";
@@ -267,6 +268,9 @@ function EditEmployeeDialog({ employee, departments, canChangeRole, canResetPass
       {canResetPassword && (
         <ResetPasswordSection employeeId={employee.id} employeeName={employee.name} />
       )}
+
+      {/* Face-recognition enrollment — for the attendance kiosk */}
+      <FaceEnroll employeeId={employee.id} employeeName={employee.name} />
 
       <DialogFooter>
         <Button onClick={save} disabled={busy} className="bg-slate-900 hover:bg-slate-800 text-white" data-testid="ee-save">
