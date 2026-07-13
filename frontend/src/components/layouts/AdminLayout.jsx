@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   LayoutDashboard, Users, Clock, CalendarDays, Home, Video,
   Megaphone, BarChart3, Settings, LogOut, Building2, Bell, Briefcase, Network, Globe2, Banknote,
-  MessageCircle,
+  MessageCircle, Receipt,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
@@ -24,6 +24,7 @@ const NAV = [
   { to: "/admin/meetings", label: "Meetings", icon: Video },
   { to: "/admin/announcements", label: "Announcements", icon: Megaphone },
   { to: "/admin/payroll", label: "Payroll", icon: Banknote },
+  { to: "/admin/expenses", label: "Expenses", icon: Receipt },
   { to: "/admin/jobs", label: "Jobs", icon: Briefcase },
   { to: "/admin/reports", label: "Reports", icon: BarChart3 },
   { to: "/admin/companies", label: "Companies", icon: Globe2 },

@@ -66,3 +66,28 @@ See `/app/memory/test_credentials.md`.
 - 5 Meta-approval template specs delivered to customer for submission to WhatsApp Manager (UTILITY, en_US)
 - All notification calls are fire-and-forget safe — HR flows never break on WA failures
 - Token is stored encrypted-at-rest only via mongo (masked on every API response)
+
+## 2026-07-13 — Face-Enrollment Robustness + Kiosk QR + Expense Claims
+### Face enrollment fix (P0)
+- `useFaceCapture.js` now: (a) sets `backend: 'humangl'` explicitly with wasm fallback, (b) loads WASM binaries from jsdelivr CDN (fixes CompileError from HTML fallback), (c) requests camera BEFORE model download (fast fail on permission denial), (d) surfaces friendly errors for each failure mode + Retry button, (e) resets the loader promise on failure so retry works.
+- `FaceEnroll.jsx` + `Scan.jsx` now render dedicated error overlays with Retry/Cancel actions.
+
+### Kiosk shortcut on Admin dashboard
+- New `KioskLinkCard.jsx` shows a tablet-scannable QR code + URL + Copy/Open/Rotate + Enable toggle at the top of the Admin overview. Uses `qrcode.react` (v4.2.0).
+
+### Expense Claims (P1)
+- Backend: `routes/expenses.py` — POST /api/expenses, GET /api/expenses/mine, /all, /summary, /:id, /:id/receipt, POST /:id/approve, /:id/reject, /:id/mark-paid, DELETE /:id. 5MB receipt limit (jpg/png/webp/heic/pdf).
+- MongoDB indexes for `expense_claims` in `seed.py`.
+- Employee page `/employee/expenses`: submit with receipt, 3 status summary cards, table with view-receipt + delete.
+- Admin page `/admin/expenses`: 4 status summary cards, tabs (pending/approved/rejected/paid/all), approve/reject with note, super_admin/hr can mark reimbursed.
+- Nav links added to both AdminLayout and EmployeeLayout.
+- Notifications: pending → routed to direct manager + admin pool; decision → back to employee.
+
+## Backlog / P1–P2 remaining
+- P1: Performance review system
+- P1: Asset management (laptops, phones, allocations, returns)
+- P1: WhatsApp notifications for Expense events (approve/reject/paid)
+- P2: Biometric/device integration
+- P2: Third-party calendar sync (Google Calendar, Outlook)
+- P2: Group/team chat (only 1:1 currently)
+- P2: Calendar grid view for meetings

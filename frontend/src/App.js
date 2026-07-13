@@ -20,6 +20,7 @@ import AdminJobs from "@/pages/admin/Jobs";
 import AdminOrgChart from "@/pages/admin/OrgChart";
 import AdminCompanies from "@/pages/admin/Companies";
 import AdminPayroll from "@/pages/admin/Payroll";
+import AdminExpenses from "@/pages/admin/Expenses";
 import AdminWhatsApp from "@/pages/admin/WhatsApp";
 import KioskScan from "@/pages/kiosk/Scan";
 
@@ -28,6 +29,7 @@ import MyLeave from "@/pages/employee/MyLeave";
 import MyWFH from "@/pages/employee/MyWFH";
 import Profile from "@/pages/employee/Profile";
 import MyPayslips from "@/pages/employee/MyPayslips";
+import MyExpenses from "@/pages/employee/MyExpenses";
 
 import Meetings from "@/pages/Meetings";
 
@@ -71,6 +73,7 @@ function App() {
             <Route path="announcements" element={<AdminAnnouncements />} />
             <Route path="reports" element={<AdminReports />} />
             <Route path="payroll" element={<AdminPayroll />} />
+            <Route path="expenses" element={<AdminExpenses />} />
             <Route path="jobs" element={<AdminJobs />} />
             <Route path="companies" element={<AdminCompanies />} />
             <Route path="whatsapp" element={<AdminWhatsApp />} />
@@ -90,6 +93,7 @@ function App() {
             <Route path="leave" element={<MyLeave />} />
             <Route path="wfh" element={<MyWFH />} />
             <Route path="payslips" element={<MyPayslips />} />
+            <Route path="expenses" element={<MyExpenses />} />
             <Route path="meetings" element={<Meetings />} />
             <Route path="profile" element={<Profile />} />
           </Route>

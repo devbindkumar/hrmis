@@ -26,6 +26,9 @@ async def ensure_indexes():
     await db.departments.create_index([("company_id", 1), ("name", 1)])
     await db.leave_requests.create_index([("company_id", 1), ("status", 1)])
     await db.wfh_requests.create_index([("company_id", 1), ("status", 1)])
+    await db.expense_claims.create_index("id", unique=True)
+    await db.expense_claims.create_index([("company_id", 1), ("status", 1)])
+    await db.expense_claims.create_index([("company_id", 1), ("user_id", 1), ("created_at", -1)])
     await db.meetings.create_index("company_id")
     await db.announcements.create_index("company_id")
 

@@ -6,6 +6,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import StatusPill from "@/components/StatusPill";
 import CheckInWidget from "@/components/CheckInWidget";
 import KioskActivity from "@/components/KioskActivity";
+import KioskLinkCard from "@/components/KioskLinkCard";
 import { Link } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -71,6 +72,8 @@ export default function AdminOverview() {
           <KioskActivity limit={8} />
         </div>
       </div>
+
+      <KioskLinkCard />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard testid="kpi-total" label="Total people" value={kpi.total_employees ?? 0} icon={Users} accent="bg-slate-900 text-white" hint="Active employees" />

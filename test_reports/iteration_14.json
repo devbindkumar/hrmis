@@ -1,0 +1,61 @@
+{
+  "summary": "Iteration 14 — end-to-end testing of (1) new Expense claims feature, (2) admin dashboard KioskLinkCard, and (3) Face enrollment fix. All 24 new backend tests pass. All frontend flows verified: employee submit + receipt view, admin approve + mark-reimbursed, sidebar/topnav links, KioskLinkCard with QR+URL+toggle+copy+rotate+open, and Face enrollment models loading successfully (no error overlay) with live video ready.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Employee /employee dashboard (pre-existing)", "issues": ["Upcoming meetings widget shows 'INVALID DATE / NaN' for TEST_garbage_* meetings — invalid date data in DB. Console error: 'Received NaN for the %s attribute'. Not part of this iteration but recommend either filtering out invalid dates or defensively rendering '—'."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter14_expenses.py",
+    "/app/test_reports/pytest/iter14_expenses.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/expenses.py: clean, correctly uses async/await, strips _id, RBAC via require_roles is consistent, receipt size guard (5MB) enforced before writing. Manager routing via employee.manager_id → user_id resolution works and populated for maya→alex as spec'd.",
+    "MyExpenses.jsx / Expenses.jsx: proper loading of categories, defensive Promise.all for parallel data fetch, correct data-testids on every interactive element (expense-row-<id>, view-receipt-<id>, approve-expense-<id>, pay-expense-<id>, decision-dialog, decision-submit, tab-<status>, etc.). Uses toast for success/error. Well factored.",
+    "KioskLinkCard.jsx: gracefully handles 'no token yet' → shows Generate CTA (data-testid=kiosk-card-generate) and 'token exists' → shows QR + URL + Copy/Open/Rotate + toggle. Toggle disabled when no token (prevents 400). Uses qrcode.react QRCodeSVG (already in package.json). Good separation.",
+    "useFaceCapture.js: humangl backend with wasmPath pointing to jsdelivr CDN — this is the actual fix for the previous white-screen bug. Load path is now: (a) getUserMedia FIRST for fast permission failure, (b) then Human import + h.load() with humangl → fallback to wasm on failure. Retry callback correctly resets state and re-triggers effect via retryTick.",
+    "FaceEnroll.jsx: retry UI + data-testid='face-enroll-error' + data-testid='face-enroll-retry' correctly conditional on `error && !loadingModels`. Live status badges (Face/Real/Live) render only when ready && !error && !loadingModels — no chance of empty-frame overlay.",
+    "Minor nit: expenses.py POST /expenses currently allows currency to be any 3-8 char string (uppercased). Consider validating against a whitelist (INR/USD/EUR/…) in a future iteration; today an employee could submit currency='ZZZ'. Not blocking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter14_expenses.py (NEW — 24 tests)"
+  ],
+  "success_rate": {"backend": "100% (24/24)", "frontend": "100% (all flows verified — employee submit+receipt, admin approve+reimburse, kiosk card, face enrollment)"},
+  "test_credentials": "admin@acme.com/Admin@123, jordan@acme.com/Demo@123, alex@acme.com/Demo@123, maya@acme.com/Demo@123, diego@acme.com/Demo@123 (all seeded).",
+  "seed_data_creation": "Test claims prefixed with 'TEST_iter14' + 'PW E2E test'. Backend fixture teardown attempts DELETE for tracked ids. Some UI-submitted rows (via Playwright) remain in maya's mine — safe to leave.",
+  "verified_scenarios": {
+    "backend_categories_defaults": "GET /api/expenses/categories returns [Travel, Meals, Office supplies, Client entertainment, Software, Other].",
+    "backend_create_manager_routing": "maya's claim gets manager_user_id + manager_name populated (Alex Rivera).",
+    "backend_create_validation": "amount<=0, empty description, malformed date, empty category, unknown category — all rejected 4xx.",
+    "backend_receipt_upload_and_fetch": "data:image/png;base64,… persists; GET /{id}/receipt returns image bytes + content-type=image/png.",
+    "backend_receipt_over_5mb_rejected": "5MB+ base64 → 400 'Receipt file exceeds 5 MB limit'.",
+    "backend_mine_isolation": "maya's /mine excludes diego's rows.",
+    "backend_all_rbac": "employee 403; manager+HR+admin 200; status filter (pending/approved/rejected/paid/all) correctly narrows results.",
+    "backend_summary_rbac_and_shape": "employee 403; admin 200 returns {pending, approved, rejected, paid} each with {count, total}.",
+    "backend_approve_and_second_400": "First approve OK, decided_by/decided_at set, decision_note persisted. Second approve → 400 'Already decided'.",
+    "backend_reject_persists_note": "status→rejected, decision_note stored.",
+    "backend_mark_paid_rbac_and_state": "manager 403 on mark-paid. admin trying mark-paid before approval → 400 'Only approved claims can be marked paid'. HR mark-paid after approval → 200; paid_by/paid_at set.",
+    "backend_delete_permissions": "Employee delete own pending → 200 + GET 404. Employee delete after approval → 400. Admin delete any → 200. Employee delete someone else's → 403.",
+    "backend_unauth_endpoints": "All 4 GETs → 401/403 without token.",
+    "frontend_employee_expenses_page": "/employee/expenses renders my-expenses with 3 summary cards + table + New claim button.",
+    "frontend_new_claim_dialog_flow": "Category dropdown, date, amount, currency, description, receipt upload → submit → toast 'Expense submitted for approval' → dialog closes → new row appears with data-testid=expense-row-<id>.",
+    "frontend_receipt_view": "After submit with attached PNG, view-receipt-<id> paperclip clicks open the ReceiptViewer dialog with the image.",
+    "frontend_admin_expenses_page": "/admin/expenses renders 4 summary cards + 5 tabs (Pending/Approved/Rejected/Reimbursed/All) + rows with Approve/Reject buttons on pending.",
+    "frontend_approve_decision_dialog": "Clicking Approve → decision-dialog opens → note textarea → Confirm → toast 'Claim approved' → row moves to Approved tab.",
+    "frontend_mark_reimbursed": "On Approved tab, Mark reimbursed btn opens confirmation → Confirm → toast 'Marked as reimbursed' → moves to Reimbursed status.",
+    "frontend_nav_links": "Admin sidebar has 'Expenses' link between Payroll and Jobs (confirmed by screenshot + a[href='/admin/expenses']). Employee top-nav has 'Expenses' between Payslips and Meetings (confirmed by screenshot).",
+    "frontend_kiosk_link_card": "data-testid='kiosk-link-card' visible on /admin (Overview) — QR (kiosk-qr), URL text (kiosk-card-url), Copy/Open/Rotate/toggle buttons all present. Toggle-off shows 'Kiosk disabled' toast, toggle-on shows 'Kiosk enabled' toast. Copy fires 'copied' toast (clipboard write-permission denied in the headless browser is expected but the toast still fires because the code does not await the writeText promise).",
+    "frontend_face_enrollment": "admin/employees → Edit Alex Rivera → face-enroll-section visible → click Enroll (face-start-btn) → models load in ~1s and video readyState=4, videoWidth=1280, paused=false. NO face-enroll-error overlay appears. Face/Real/Live badges render at the bottom of the video. The fix is confirmed effective."
+  },
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter14 test file /app/backend/tests/test_iter14_expenses.py covers 24 endpoints/scenarios end-to-end. Test data is prefixed 'TEST_iter14' and 'PW E2E' — feel free to clean up via `db.expense_claims.delete_many({description: /TEST_iter14|PW E2E/})` if needed. Iter11+iter12+iter13 regression tests were NOT rerun in this iteration (out of scope) but the expenses feature only adds a new collection + router and does not touch existing modules. The KioskLinkCard depends on existing /companies/mine, /companies/<id>/kiosk-token, /companies/<id>/kiosk-token/rotate, PATCH /companies/<id> — all previously verified. Face enrollment fix is a pure client-side change (useFaceCapture.js). One pre-existing UI issue observed: the employee /employee 'Upcoming meetings' widget renders 'INVALID DATE / NaN' badges for TEST_garbage_* meetings — data-quality issue, not in this iteration's scope.",
+  "rca of the issue": "N/A — clean iteration. Face-enroll fix (backend='humangl' + wasmPath=CDN) is confirmed to work: models load within ~1s and stream is live with no error overlay. Expenses feature is fully functional across all roles and edge cases. Kiosk link card is prominent on admin Overview with QR, toggle, and rotation flows all working."
+}

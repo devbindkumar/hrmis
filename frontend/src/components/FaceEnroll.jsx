@@ -21,7 +21,7 @@ export default function FaceEnroll({ employeeId, employeeName, onChanged }) {
   const [busy, setBusy] = useState(false);
   const [scanActive, setScanActive] = useState(false);
 
-  const { videoRef, ready, loadingModels, error, state, captureJpeg } =
+  const { videoRef, ready, loadingModels, error, state, captureJpeg, retry } =
     useFaceCapture({ enabled: scanActive });
 
   const loadStatus = async () => {
@@ -128,8 +128,19 @@ export default function FaceEnroll({ employeeId, employeeName, onChanged }) {
               </div>
             )}
             {error && !loadingModels && (
-              <div className="absolute inset-0 grid place-items-center text-rose-100 bg-rose-900/80 text-sm p-4 text-center">
-                <div><AlertTriangle className="h-6 w-6 mx-auto mb-2" />{error}</div>
+              <div className="absolute inset-0 grid place-items-center text-rose-100 bg-rose-900/90 text-sm p-4 text-center" data-testid="face-enroll-error">
+                <div>
+                  <AlertTriangle className="h-6 w-6 mx-auto mb-2" />
+                  <div className="text-[13px] leading-relaxed">{error}</div>
+                  <div className="mt-3 flex items-center justify-center gap-2">
+                    <Button size="sm" variant="secondary" onClick={retry} data-testid="face-enroll-retry">
+                      Retry
+                    </Button>
+                    <Button size="sm" variant="ghost" className="text-rose-100 hover:text-white hover:bg-rose-800" onClick={() => { setScanActive(false); }}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
             {ready && !error && !loadingModels && (
