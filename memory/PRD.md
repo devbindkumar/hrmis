@@ -70,6 +70,7 @@ See `/app/memory/test_credentials.md`.
 ## 2026-07-14 — Re-Check-In + Attendance Audit Log + CSV Export
 ### Re-Check-In (P0 request)
 - New endpoint `POST /api/attendance/re-check-in` — reopens today's attendance for an employee who accidentally checked out. Appends a fresh open session; the previous check_out is preserved in the audit log.
+- Available to **all authenticated roles** (super_admin / hr / manager / employee) — the shared `CheckInWidget` on the Admin/HR/Manager dashboards now shows a green "Re-check in" button in the "Day complete" state alongside the "Wrapped up at HH:MM" pill.
 - Kiosk (`POST /api/kiosk/check-in`) now auto-detects the same case and takes the re-check-in path instead of returning 400.
 - Backwards-compatible: legacy attendance docs missing `sessions` are transparently backfilled from `check_in`/`check_out`.
 

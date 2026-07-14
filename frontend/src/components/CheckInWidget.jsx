@@ -3,7 +3,7 @@ import api, { formatApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Activity, Coffee, House, LogIn, LogOut, Video } from "lucide-react";
+import { Activity, Coffee, House, LogIn, LogOut, Video, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import StatusPill from "@/components/StatusPill";
 
@@ -55,6 +55,10 @@ export default function CheckInWidget({ variant = "compact", testid = "checkin-w
     try { await api.post("/attendance/check-out"); toast.success("Checked out. See you tomorrow!"); load(); }
     catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
+  const reCheckIn = async () => {
+    try { await api.post("/attendance/re-check-in"); toast.success("Welcome back — your day is reopened."); load(); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
   const setStatus = async (s) => {
     try { await api.post("/attendance/status", { status: s }); toast.success("Status updated"); load(); }
     catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
@@ -66,7 +70,16 @@ export default function CheckInWidget({ variant = "compact", testid = "checkin-w
 
   const checked = !!today.check_in && !today.check_out;
   const done = !!today.check_out;
-  const duration = checked ? liveDuration(today.check_in) : (today.duration_seconds || 0);
+  // Total worked = closed sessions + live open session (if any)
+  const sessions = today.sessions || (today.check_in ? [{ in: today.check_in, out: today.check_out }] : []);
+  const closedSeconds = sessions.reduce((sum, s) => {
+    if (!s.in || !s.out) return sum;
+    return sum + Math.max(0, Math.floor((new Date(s.out).getTime() - new Date(s.in).getTime()) / 1000));
+  }, 0);
+  const openIn = checked && sessions.length ? sessions[sessions.length - 1].in : null;
+  const duration = done
+    ? (today.duration_seconds || closedSeconds)
+    : (closedSeconds + (openIn ? liveDuration(openIn) : 0));
 
   const inTime = today.check_in && new Date(today.check_in).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const outTime = today.check_out && new Date(today.check_out).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -123,7 +136,17 @@ export default function CheckInWidget({ variant = "compact", testid = "checkin-w
             </Button>
           </>
         ) : (
-          <div className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-sm">Wrapped up at {outTime}.</div>
+          <>
+            <div className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-sm">Wrapped up at {outTime}.</div>
+            <Button
+              onClick={reCheckIn}
+              className="h-11 rounded-xl px-5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+              data-testid={`${testid}-re-check-in-button`}
+              title="Reopen your day if you checked out by mistake"
+            >
+              <RotateCcw className="h-4 w-4 mr-2" strokeWidth={1.6} /> Re-check in
+            </Button>
+          </>
         )}
       </div>
     </div>
