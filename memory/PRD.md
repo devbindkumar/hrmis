@@ -67,7 +67,29 @@ See `/app/memory/test_credentials.md`.
 - All notification calls are fire-and-forget safe — HR flows never break on WA failures
 - Token is stored encrypted-at-rest only via mongo (masked on every API response)
 
-## 2026-07-14 — Employee Role Editor + `manager_id → null` bug fix
+## 2026-07-14 — Re-Check-In + Attendance Audit Log + CSV Export
+### Re-Check-In (P0 request)
+- New endpoint `POST /api/attendance/re-check-in` — reopens today's attendance for an employee who accidentally checked out. Appends a fresh open session; the previous check_out is preserved in the audit log.
+- Kiosk (`POST /api/kiosk/check-in`) now auto-detects the same case and takes the re-check-in path instead of returning 400.
+- Backwards-compatible: legacy attendance docs missing `sessions` are transparently backfilled from `check_in`/`check_out`.
+
+### Audit log (`attendance_events` collection)
+- Every `check_in`, `check_out`, `re_check_in`, and `status_change` writes an immutable event row: `id, company_id, user_id, date, event_type, ts, via (web|kiosk|admin), actor_user_id, meta`.
+- New endpoint `GET /api/attendance/events?days=N` — chronological trail for the calling user.
+- Employee "Today" page renders the trail below the hero card with colored dots per event type.
+
+### CSV Export (P0 request)
+- `GET /api/attendance/export?start&end&department` — super_admin/hr only (manager gets 403). Range capped at 366 days.
+- Streams a CSV with columns: **Date, Employee Code, Name, Department, Designation, Email, First Check-in, Last Check-out, Sessions, Total Hours, Late (Y/N), Late Minutes, Early Departure Minutes, Overtime Hours, Status, Notes.**
+- Rows include: Present, WFH, On Leave · &lt;type&gt;, Weekly Off (Sat/Sun), Absent. Multi-session days get a "N sessions (re-check-in)" note.
+- New "Export report" dialog on `/admin/attendance` with 5 presets (Today / Last 7 / This month / Last month / Last 90) + department filter.
+- Frontend also shows a small `N×` pill next to Check-out for days with multiple sessions.
+
+### Testing
+- New pytest suite: `/app/backend/tests/test_iter15_attendance_recheckin.py`.
+- 100% pass on iteration 15 (13/13 backend + full frontend flows).
+
+
 - **Bug fix**: `PATCH /api/employees/{id}` used `model_dump(exclude_none=True)` which silently dropped `manager_id=null`, so selecting "No manager" on the Edit dialog never persisted. Switched to `exclude_unset=True` — nulls that the client explicitly sends now save through.
 - **Role editing**: Added `role` field to `EmployeeUpdate`. Route now updates `users.role` (with audit fields `role_changed_by`/`role_changed_at`). Guardrails: only super_admin/hr can change roles; HR cannot promote to or modify a super_admin.
 - **UI**: Edit Employee modal has a new "Role & access" section (indigo card) with Role + Status side-by-side, visible only to super_admin/hr. A confirm checkbox surfaces when the role actually changes.
