@@ -135,6 +135,7 @@ async def kiosk_match(body: MatchRequest):
 
 
 async def _perform_check_in(company_id: str, employee_id: str, tz_name: str) -> dict:
+    from attendance_service import log_event  # local import to avoid cycles
     db = get_db()
     emp = await db.employees.find_one(
         {"id": employee_id, "company_id": company_id},
@@ -146,6 +147,22 @@ async def _perform_check_in(company_id: str, employee_id: str, tz_name: str) -> 
     today = _today_str()
     now = _now_iso()
     existing = await db.attendance.find_one({"user_id": emp["user_id"], "date": today}, {"_id": 0})
+
+    # Re-check-in path: employee already checked out today → open a new session
+    if existing and existing.get("check_in") and existing.get("check_out"):
+        sessions = existing.get("sessions") or [{"in": existing["check_in"], "out": existing.get("check_out")}]
+        sessions.append({"in": now, "out": None})
+        await db.attendance.update_one(
+            {"user_id": emp["user_id"], "date": today},
+            {"$set": {"sessions": sessions, "check_out": None,
+                      "current_status": "active", "status": "present"}},
+        )
+        await log_event(company_id=company_id, user_id=emp["user_id"], date=today,
+                        event_type="re_check_in", ts=now, via="kiosk",
+                        meta={"session_index": len(sessions) - 1,
+                              "previous_check_out": existing.get("check_out")})
+        return {"success": True, "employee_name": emp["name"], "via": "kiosk", "reopened": True}
+
     if existing and existing.get("check_in"):
         raise HTTPException(status_code=400, detail="Already checked in today")
 
@@ -159,6 +176,7 @@ async def _perform_check_in(company_id: str, employee_id: str, tz_name: str) -> 
         "date": today,
         "check_in": now,
         "check_out": None,
+        "sessions": [{"in": now, "out": None}],
         "status": "present",
         "current_status": "active",
         "breaks": [],
@@ -168,6 +186,9 @@ async def _perform_check_in(company_id: str, employee_id: str, tz_name: str) -> 
         "shift_source": shift["source"],
     }
     await db.attendance.update_one({"user_id": emp["user_id"], "date": today}, {"$set": doc}, upsert=True)
+    await log_event(company_id=company_id, user_id=emp["user_id"], date=today,
+                    event_type="check_in", ts=now, via="kiosk",
+                    meta={"is_late": late, "shift_start_time": shift["shift_start_time"]})
     # WhatsApp — reuse existing notification path
     await notify_checkin_checkout(
         company_id=company_id, employee_user_id=emp["user_id"], action="Checked In", ts_iso=now,
@@ -176,6 +197,7 @@ async def _perform_check_in(company_id: str, employee_id: str, tz_name: str) -> 
 
 
 async def _perform_check_out(company_id: str, employee_id: str) -> dict:
+    from attendance_service import log_event, sum_session_seconds  # local import
     db = get_db()
     emp = await db.employees.find_one(
         {"id": employee_id, "company_id": company_id},
@@ -192,17 +214,23 @@ async def _perform_check_out(company_id: str, employee_id: str) -> dict:
         raise HTTPException(status_code=400, detail="Already checked out today")
 
     now = _now_iso()
-    check_in_dt = datetime.fromisoformat(rec["check_in"].replace("Z", "+00:00"))
-    duration = int((datetime.fromisoformat(now).replace(tzinfo=timezone.utc) - check_in_dt).total_seconds()) if check_in_dt.tzinfo else 0
+    sessions = rec.get("sessions") or [{"in": rec["check_in"], "out": None}]
+    if sessions and sessions[-1].get("out") is None:
+        sessions[-1]["out"] = now
+    duration = sum_session_seconds(sessions)
     await db.attendance.update_one(
         {"user_id": emp["user_id"], "date": today},
         {"$set": {
             "check_out": now,
             "current_status": "offline",
             "duration_seconds": max(0, duration),
+            "sessions": sessions,
             "via_out": "kiosk",
         }},
     )
+    await log_event(company_id=company_id, user_id=emp["user_id"], date=today,
+                    event_type="check_out", ts=now, via="kiosk",
+                    meta={"session_index": len(sessions) - 1, "duration_seconds": duration})
     await notify_checkin_checkout(
         company_id=company_id, employee_user_id=emp["user_id"], action="Checked Out", ts_iso=now,
     )

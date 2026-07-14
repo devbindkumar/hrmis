@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { LogIn, LogOut, Coffee, Video, House, Activity, CalendarDays, BellRing } from "lucide-react";
+import { LogIn, LogOut, Coffee, Video, House, Activity, CalendarDays, BellRing, RotateCcw, History } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import StatusPill from "@/components/StatusPill";
@@ -33,15 +33,18 @@ export default function EmployeeToday() {
   const { user } = useAuth();
   const [dash, setDash] = useState(null);
   const [today, setToday] = useState(null);
+  const [events, setEvents] = useState([]);
   const [tick, setTick] = useState(0);
 
   const load = async () => {
-    const [a, b] = await Promise.all([
+    const [a, b, ev] = await Promise.all([
       api.get("/dashboard/employee"),
       api.get("/attendance/today"),
+      api.get("/attendance/events", { params: { days: 1 } }).catch(() => ({ data: [] })),
     ]);
     setDash(a.data);
     setToday(b.data);
+    setEvents(ev.data || []);
   };
   useEffect(() => { load(); }, []);
   useEffect(() => { const t = setInterval(() => setTick((x)=>x+1), 30000); return () => clearInterval(t); }, []);
@@ -54,6 +57,10 @@ export default function EmployeeToday() {
     try { await api.post("/attendance/check-out"); toast.success("Checked out. See you tomorrow!"); load(); }
     catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
+  const reCheckIn = async () => {
+    try { await api.post("/attendance/re-check-in"); toast.success("Welcome back — your day is reopened."); load(); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
   const setStatus = async (s) => {
     try { await api.post("/attendance/status", { status: s }); toast.success(`Status updated`); load(); }
     catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
@@ -63,7 +70,16 @@ export default function EmployeeToday() {
 
   const checked = !!today.check_in && !today.check_out;
   const done = !!today.check_out;
-  const duration = checked ? liveDuration(today.check_in) : (today.duration_seconds || 0);
+  const sessions = today.sessions || (today.check_in ? [{ in: today.check_in, out: today.check_out }] : []);
+  // Total worked = closed sessions + live open session (if any)
+  const closedSeconds = sessions.reduce((sum, s) => {
+    if (!s.in || !s.out) return sum;
+    return sum + Math.max(0, Math.floor((new Date(s.out).getTime() - new Date(s.in).getTime()) / 1000));
+  }, 0);
+  const openIn = checked && sessions.length ? sessions[sessions.length - 1].in : null;
+  const duration = done
+    ? (today.duration_seconds || closedSeconds)
+    : (closedSeconds + (openIn ? liveDuration(openIn) : 0));
 
   return (
     <div className="space-y-8 animate-fade-up" data-testid="employee-today">
@@ -71,7 +87,7 @@ export default function EmployeeToday() {
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
           <h1 className="font-display text-4xl sm:text-5xl font-semibold tracking-tight text-slate-900">Hi, {user?.name?.split(" ")[0]}.</h1>
-          <p className="text-base text-slate-500 mt-2">Here's your day, all in one place.</p>
+          <p className="text-base text-slate-500 mt-2">Here&apos;s your day, all in one place.</p>
         </div>
         <div className="text-xs uppercase tracking-widest font-semibold text-slate-400">{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</div>
       </div>
@@ -125,13 +141,60 @@ export default function EmployeeToday() {
                   </Select>
                 </>
               ) : (
-                <div className="px-4 py-3 rounded-xl bg-slate-100 text-slate-600 text-sm">You wrapped up at {new Date(today.check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. </div>
+                <div className="flex flex-wrap items-center gap-3" data-testid="day-complete-actions">
+                  <div className="px-4 py-3 rounded-xl bg-slate-100 text-slate-600 text-sm">
+                    You wrapped up at {new Date(today.check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.
+                  </div>
+                  <Button
+                    onClick={reCheckIn}
+                    size="lg"
+                    className="h-14 rounded-xl px-6 bg-emerald-600 hover:bg-emerald-700 text-white text-base font-medium"
+                    data-testid="re-check-in-button"
+                  >
+                    <RotateCcw className="h-5 w-5 mr-2" strokeWidth={1.5} /> Re-check in
+                  </Button>
+                  <div className="text-xs text-slate-500 leading-tight max-w-[220px]">
+                    Checked out by mistake? Reopen your day — the original checkout stays in the audit log.
+                  </div>
+                </div>
               )}
             </div>
+
+            {events.length > 0 && (
+              <div className="mt-6 pt-5 border-t border-slate-100" data-testid="attendance-audit-log">
+                <div className="flex items-center gap-2 text-xs uppercase tracking-widest font-semibold text-slate-400">
+                  <History className="h-3.5 w-3.5" strokeWidth={1.5} />
+                  Today&apos;s activity
+                </div>
+                <ol className="mt-3 space-y-1.5">
+                  {events.slice(0, 6).map((e) => {
+                    const t = new Date(e.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const label = ({
+                      check_in: "Checked in",
+                      check_out: "Checked out",
+                      re_check_in: "Re-checked in",
+                      status_change: `Status → ${e.meta?.status || ""}`,
+                    })[e.event_type] || e.event_type;
+                    const dot = ({
+                      check_in: "bg-emerald-500",
+                      check_out: "bg-rose-500",
+                      re_check_in: "bg-blue-500",
+                      status_change: "bg-slate-400",
+                    })[e.event_type] || "bg-slate-300";
+                    return (
+                      <li key={e.id} className="flex items-center gap-3 text-sm" data-testid={`audit-event-${e.event_type}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+                        <span className="text-slate-800 font-medium">{label}</span>
+                        <span className="text-slate-400 font-mono text-xs tabular-nums">{t}</span>
+                        <span className="text-[10px] uppercase tracking-widest text-slate-400">{e.via}</span>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            )}
           </div>
         </div>
-
-        {/* leave balance + quick */}
         <div className="md:col-span-3 space-y-6" data-testid="employee-side">
           <div className="surface p-6">
             <div className="flex items-center justify-between">
