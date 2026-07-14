@@ -179,33 +179,47 @@ function EditEmployeeDialog({ employee, departments, canChangeRole, canResetPass
     location: employee.location || "",
     phone: employee.phone || "",
     manager_id: employee.manager_id || "",
+    role: employee.role || "employee",
     status: employee.status || "active",
     shift_start_time: employee.shift_start_time || "",
     late_grace_minutes: employee.late_grace_minutes ?? "",
   });
   const [busy, setBusy] = useState(false);
   const [managers, setManagers] = useState([]);
+  const [confirmRole, setConfirmRole] = useState(false);
 
   useEffect(() => {
     api.get("/employees/managers").then((r) => setManagers(r.data.filter((m) => m.id !== employee.id)));
   }, [employee.id]);
 
+  const roleChanged = canChangeRole && form.role !== (employee.role || "employee");
+
   const save = async () => {
     if (!form.name || !form.department || !form.designation) {
       toast.error("Name, department and designation are required"); return;
     }
+    if (roleChanged && !confirmRole) {
+      toast.error("Please confirm the role change before saving"); return;
+    }
     setBusy(true);
     try {
-      // Strip empty override fields so the backend keeps them null / falls through.
-      const payload = { ...form, manager_id: form.manager_id || null };
-      if (!payload.shift_start_time) delete payload.shift_start_time;
-      if (payload.late_grace_minutes === "" || payload.late_grace_minutes === null) {
-        delete payload.late_grace_minutes;
-      } else {
-        payload.late_grace_minutes = Number(payload.late_grace_minutes);
+      // Explicitly send manager_id (including null) so the backend can clear it.
+      const payload = {
+        name: form.name,
+        department: form.department,
+        designation: form.designation,
+        location: form.location,
+        phone: form.phone,
+        manager_id: form.manager_id || null,
+        status: form.status,
+      };
+      if (canChangeRole) payload.role = form.role;
+      if (form.shift_start_time) payload.shift_start_time = form.shift_start_time;
+      if (form.late_grace_minutes !== "" && form.late_grace_minutes !== null) {
+        payload.late_grace_minutes = Number(form.late_grace_minutes);
       }
       await api.patch(`/employees/${employee.id}`, payload);
-      toast.success("Saved");
+      toast.success(roleChanged ? "Saved — role updated" : "Saved");
       onSaved();
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail));
@@ -261,15 +275,47 @@ function EditEmployeeDialog({ employee, departments, canChangeRole, canResetPass
           </Select>
         </div>
         {canChangeRole && (
-          <div className="col-span-2">
-            <Label>Status</Label>
-            <Select value={form.status} onValueChange={(v)=>setForm({...form, status: v})}>
-              <SelectTrigger className="mt-1.5" data-testid="ee-status"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive (revokes access)</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="col-span-2 rounded-lg border border-indigo-200/70 bg-indigo-50/40 p-3">
+            <Label className="text-xs font-semibold text-indigo-900">Role & access</Label>
+            <div className="grid grid-cols-2 gap-3 mt-2">
+              <div>
+                <Label className="text-[11px] text-slate-600">Role</Label>
+                <Select value={form.role} onValueChange={(v) => { setForm({...form, role: v}); setConfirmRole(false); }}>
+                  <SelectTrigger className="mt-1" data-testid="ee-role"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="employee">Employee</SelectItem>
+                    <SelectItem value="manager">Manager</SelectItem>
+                    <SelectItem value="hr">HR</SelectItem>
+                    <SelectItem value="super_admin">Super Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-[11px] text-slate-600">Status</Label>
+                <Select value={form.status} onValueChange={(v)=>setForm({...form, status: v})}>
+                  <SelectTrigger className="mt-1" data-testid="ee-status"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive (revokes access)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {roleChanged && (
+              <label className="mt-3 flex items-start gap-2 text-[12px] text-amber-800 bg-amber-50 border border-amber-200 rounded-md p-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-3.5 w-3.5 rounded border-amber-400 text-amber-700 focus:ring-amber-500"
+                  checked={confirmRole}
+                  onChange={(e) => setConfirmRole(e.target.checked)}
+                  data-testid="ee-role-confirm"
+                />
+                <span>
+                  <b>Role change:</b> {ROLE_LABELS[employee.role] || employee.role} → <b>{ROLE_LABELS[form.role]}</b>.
+                  This will grant/revoke permissions on the next sign-in. Tick to confirm.
+                </span>
+              </label>
+            )}
           </div>
         )}
 

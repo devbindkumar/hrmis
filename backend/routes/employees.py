@@ -36,6 +36,7 @@ class EmployeeUpdate(BaseModel):
     phone: Optional[str] = None
     manager_id: Optional[str] = None
     status: Optional[str] = None
+    role: Optional[str] = None
     avatar_url: Optional[str] = None
     # Per-employee shift overrides for late-detection (falls back to dept, then company)
     shift_start_time: Optional[str] = Field(default=None, pattern=r"^\d{1,2}:\d{2}$")
@@ -292,13 +293,41 @@ async def update_employee(employee_id: str, body: EmployeeUpdate, admin: dict = 
     emp = await db.employees.find_one({"id": employee_id}, {"_id": 0})
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
-    update = {k: v for k, v in body.model_dump(exclude_none=True).items()}
+
+    # exclude_unset keeps fields the client explicitly sent — even nulls —
+    # so "Reports to → No manager" (manager_id=null) actually persists.
+    update = body.model_dump(exclude_unset=True)
+
+    # Role changes require elevated privileges and route through users.role
+    new_role = update.pop("role", None)
+    if new_role is not None:
+        if admin.get("role") not in ("super_admin", "hr"):
+            raise HTTPException(status_code=403, detail="Only Super Admin or HR can change roles")
+        if new_role not in ("super_admin", "hr", "manager", "employee"):
+            raise HTTPException(status_code=400, detail=f"Unknown role '{new_role}'")
+        # HR cannot promote/demote to/from super_admin
+        if admin.get("role") == "hr" and (new_role == "super_admin"):
+            raise HTTPException(status_code=403, detail="HR cannot assign the Super Admin role")
+        target_user = await db.users.find_one({"id": emp["user_id"]}, {"_id": 0, "role": 1})
+        if admin.get("role") == "hr" and target_user and target_user.get("role") == "super_admin":
+            raise HTTPException(status_code=403, detail="HR cannot modify a Super Admin's role")
+        await db.users.update_one({"id": emp["user_id"]}, {"$set": {
+            "role": new_role,
+            "role_changed_by": admin.get("id"),
+            "role_changed_at": datetime.now(timezone.utc).isoformat(),
+        }})
+
     if update:
         await db.employees.update_one({"id": employee_id}, {"$set": update})
         # mirror status to user
         if "status" in update:
             await db.users.update_one({"id": emp["user_id"]}, {"$set": {"status": update["status"]}})
+
     updated = await db.employees.find_one({"id": employee_id}, {"_id": 0})
+    # attach role for immediate UI reflection
+    u = await db.users.find_one({"id": emp["user_id"]}, {"_id": 0, "role": 1})
+    if u and updated:
+        updated["role"] = u.get("role")
     return updated
 
 

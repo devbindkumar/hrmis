@@ -67,6 +67,11 @@ See `/app/memory/test_credentials.md`.
 - All notification calls are fire-and-forget safe — HR flows never break on WA failures
 - Token is stored encrypted-at-rest only via mongo (masked on every API response)
 
+## 2026-07-14 — Employee Role Editor + `manager_id → null` bug fix
+- **Bug fix**: `PATCH /api/employees/{id}` used `model_dump(exclude_none=True)` which silently dropped `manager_id=null`, so selecting "No manager" on the Edit dialog never persisted. Switched to `exclude_unset=True` — nulls that the client explicitly sends now save through.
+- **Role editing**: Added `role` field to `EmployeeUpdate`. Route now updates `users.role` (with audit fields `role_changed_by`/`role_changed_at`). Guardrails: only super_admin/hr can change roles; HR cannot promote to or modify a super_admin.
+- **UI**: Edit Employee modal has a new "Role & access" section (indigo card) with Role + Status side-by-side, visible only to super_admin/hr. A confirm checkbox surfaces when the role actually changes.
+
 ## 2026-07-13 — Face-Enrollment Robustness + Kiosk QR + Expense Claims
 ### Face enrollment fix (P0)
 - `useFaceCapture.js` now: (a) sets `backend: 'humangl'` explicitly with wasm fallback, (b) loads WASM binaries from jsdelivr CDN (fixes CompileError from HTML fallback), (c) requests camera BEFORE model download (fast fail on permission denial), (d) surfaces friendly errors for each failure mode + Retry button, (e) resets the loader promise on failure so retry works.
