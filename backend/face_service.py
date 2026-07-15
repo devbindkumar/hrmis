@@ -27,8 +27,8 @@ from db import get_db
 
 logger = logging.getLogger("hrmis.face")
 
-EMBEDDING_DIM = 128            # human/ArcFace output size
-MATCH_THRESHOLD = 0.55         # Euclidean distance; smaller = more strict
+EMBEDDING_DIM = 1024           # @vladmandic/human 3.3.x FaceRes v2 output size
+MATCH_THRESHOLD = 0.6          # Euclidean distance on L2-normalised vectors (0..2)
 MIN_LIVENESS_SCORE = 0.60      # 0..1; from human.result.face[0].live
 MIN_ANTISPOOF_SCORE = 0.60     # 0..1; from human.result.face[0].real
 MAX_ENROLL_SAMPLES = 5
@@ -45,16 +45,27 @@ def _euclid(a: List[float], b: List[float]) -> float:
     return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b)))
 
 
+def _l2_normalize(vec: List[float]) -> List[float]:
+    """Unit-normalise so euclidean distance is dimension-independent (0..2)."""
+    norm = math.sqrt(sum(x * x for x in vec))
+    if norm <= 0:
+        return vec
+    return [x / norm for x in vec]
+
+
 def _validate_embedding(vec: Any) -> List[float]:
     if not isinstance(vec, list) or len(vec) != EMBEDDING_DIM:
-        raise ValueError(f"Embedding must be a list of {EMBEDDING_DIM} floats (got {type(vec).__name__} · len={len(vec) if isinstance(vec, list) else 'n/a'})")
+        raise ValueError(
+            f"Embedding must be a list of {EMBEDDING_DIM} floats "
+            f"(got {type(vec).__name__} · len={len(vec) if isinstance(vec, list) else 'n/a'})"
+        )
     out: List[float] = []
     for x in vec:
         if isinstance(x, (int, float)) and not math.isnan(float(x)) and math.isfinite(float(x)):
             out.append(float(x))
         else:
             raise ValueError("Embedding contains non-finite values")
-    return out
+    return _l2_normalize(out)
 
 
 # ─────────────────────────── enrollment ─────────────────────────────

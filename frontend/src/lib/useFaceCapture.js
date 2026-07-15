@@ -28,7 +28,7 @@ const HUMAN_CONFIG = {
   face: {
     enabled: true,
     detector: { rotation: false, maxDetected: 1, minConfidence: 0.6, return: false },
-    description: { enabled: true },   // ArcFace 128-d embedding
+    description: { enabled: true },   // FaceRes v2 → 1024-d embedding
     iris: { enabled: false },
     emotion: { enabled: false },
     antispoof: { enabled: true },     // real vs fake
