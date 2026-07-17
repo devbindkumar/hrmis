@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/contexts/AuthContext";
 import LeaveTypesPanel from "@/pages/admin/LeaveTypesPanel";
+import MeetingRoomsPanel from "@/pages/admin/MeetingRoomsPanel";
 
 export default function AdminSettings() {
   const [departments, setDepartments] = useState([]);
@@ -95,6 +96,8 @@ export default function AdminSettings() {
       </div>
 
       <LeaveTypesPanel />
+
+      <MeetingRoomsPanel />
 
       <ShiftAndKioskPanel />
     </div>

@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 16 — Meeting rooms + booking approval flow. Backend: 16/16 pytest cases pass (auto-seed idempotency, RBAC on rooms CRUD, duplicate name, feature filtering, soft-delete + include_inactive, conflict-check, 30-min auto-approved, 409 conflict message, >120min & recurring approval flow, super_admin/HR auto-approve, approve/reject with note, 400 on second decide, inactive+invalid room 400). Frontend: HR meetings page shows 2 tabs with pending badge, dialog with room dropdown + feature badges + available hint + conflict banner wiring, recurring toggle reveals approval banner and switches submit label to 'Submit for approval'. Approvals queue renders pending row → decision dialog → Approve & notify → toast + row disappears. Settings Meeting-rooms panel shows 2 seeded rooms with add/edit/delete/show-deactivated controls. Employee at /employee/meetings has no approvals tab. Manager at /admin/meetings has no approvals tab (correct RBAC).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Meetings dialog + Rooms dialog", "issues": ["Console warning: 'Missing Description or aria-describedby={undefined} for DialogContent' — add DialogDescription for a11y compliance (non-blocking)"]},
+      {"screen": "Employee dashboard (Today)", "issues": ["Console error: 'Received NaN for the %s attribute' seen on employee dashboard — unrelated to this feature but should be investigated separately"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter16_rooms_meetings.py",
+    "/app/test_reports/pytest/iter16_results.xml"
+  ],
+  "action_items": [
+    "(nit) Add DialogDescription to NewMeetingDialog, ApprovalsQueue decision dialog, and RoomDialog to silence Radix a11y warning.",
+    "(unrelated pre-existing) Investigate 'Received NaN for the %s attribute' React warning on employee /employee (Today) page — not caused by this iteration but visible during Maya login."
+  ],
+  "critical_code_review_comments": [
+    "routes/rooms.py ensure_default_rooms is idempotent but is called on every GET /api/rooms — cheap count query, acceptable.",
+    "routes/meetings.py — _has_conflict correctly excludes cancelled + rejected; approve re-checks conflict (returns 409). Good.",
+    "routes/meetings.py — pending meetings do NOT send WhatsApp/email invites; invites fire only on approve/auto_approve — matches spec.",
+    "Meetings.jsx (536 lines) is close to the 700-line splitting threshold; NewMeetingDialog + ApprovalsQueue could be extracted into separate files for maintainability (not blocking).",
+    "MeetingRoomsPanel.jsx — soft-deleted rooms are shown only when 'Show deactivated' toggled; edit/delete buttons hidden for inactive rooms → cannot reactivate from UI. Consider a 'Reactivate' button or exposing the active toggle in the edit dialog (backend PATCH supports active:true).",
+    "MeetingRoomsPanel: RoomDialog reuses same DialogContent inside two Dialog wrappers — pattern is fine; state uses room object identity which works.",
+    "Backend supports 'biweekly' recurrence frequency in UI select but backend model just stores dict as-is → OK (no enum enforcement)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter16_rooms_meetings.py (new)"
+  ],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "100% of tested critical flows"},
+  "test_credentials": "Used credentials from /app/memory/test_credentials.md — admin@acme.com, jordan@acme.com (HR), alex@acme.com (manager), maya@acme.com (employee).",
+  "seed_data_creation": "Test suite created ~17 TEST_-prefixed meetings + a couple of TEST_-prefixed rooms; all cleaned up via cleanup script after run. TEST_inact_* rooms remain soft-deleted (visible only with include_inactive=true) — safe.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_iter16_rooms_meetings.py fully covers rooms + meeting-approval matrix and can be used as regression. UI has data-testid coverage for meetings-page, tab-mine, tab-approvals, new-meeting-btn, new-meeting-dialog, meeting-title, meeting-room-select, room-available-hint, room-conflict-banner, approval-banner, meeting-recurring, meeting-submit, approvals-queue, pending-row-{id}, approve-meeting-{id}, reject-meeting-{id}, meeting-decision-dialog, decision-note-input, decision-submit, rooms-panel, room-row-{id}, add-room-btn, room-new-dialog, room-name-input, room-capacity-input, room-location-input, feature-{key}, room-submit, edit-room-{id}, delete-room-{id}, show-inactive-toggle.",
+  "rca of the issue": "N/A — no bugs found."
+}
