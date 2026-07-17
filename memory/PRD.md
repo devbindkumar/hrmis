@@ -67,6 +67,15 @@ See `/app/memory/test_credentials.md`.
 - All notification calls are fire-and-forget safe — HR flows never break on WA failures
 - Token is stored encrypted-at-rest only via mongo (masked on every API response)
 
+## 2026-07-17 — Room Availability Calendar Grid
+- New `GET /api/rooms/day-schedule?date=YYYY-MM-DD` — returns every active room + its bookings for the day, sorted by start time. Overlap query keeps midnight-spanning meetings visible on both days. Strict date validation via `datetime.strptime`.
+- New `/admin/rooms` & `/employee/rooms` route (RoomAvailability.jsx) — horizontal Gantt-style grid: rooms as rows, 08:00-20:00 axis in half-hour columns.
+- Booking blocks render indigo for confirmed / amber for pending-approval — non-clickable so users can't accidentally rebook.
+- Empty half-hour slots (48 per row) are clickable → deep-link to `/admin/meetings?new=1&room_id=&start=&end=` which auto-opens the Schedule dialog with the room, start & end pre-filled and the "Room is available" green hint.
+- Rose "now" line + dot rendered only when viewing today; date picker + Prev/Next/Today buttons + weekend badge.
+- Sidebar "Rooms" link (MapPin icon) added to both AdminLayout and EmployeeLayout.
+- Iteration 17 report: 12/13 backend (initial lax-date validation fixed same session) + 9/9 frontend flows pass.
+
 ## 2026-07-17 — Meeting-Room Booking + Approval Flow
 ### Rooms (fully manageable from day 1)
 - New `meeting_rooms` collection auto-seeded with 2 defaults per company (Conference Room A · 8 seats, Conference Room B · 4 seats). Idempotent — `ensure_default_rooms` no-ops when any room exists.

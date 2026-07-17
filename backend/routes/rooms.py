@@ -176,10 +176,10 @@ async def day_schedule(date: str, user: dict = Depends(get_current_user)):
     await ensure_default_rooms(cid)
     # Build ISO range for the entire day in UTC (server-side is UTC; the UI localises)
     try:
-        y, m, d = date.split("-")
+        datetime.strptime(date, "%Y-%m-%d")
         start = f"{date}T00:00:00+00:00"
         end = f"{date}T23:59:59.999999+00:00"
-    except Exception:
+    except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
 
     rooms = await db.meeting_rooms.find(
