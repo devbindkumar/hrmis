@@ -73,7 +73,7 @@ export default function MeetingRoomsPanel() {
       <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
         {visible.length === 0 ? (
           <div className="col-span-2 rounded-lg border border-dashed border-slate-300 bg-slate-50/50 p-6 text-center text-sm text-slate-500">
-            No rooms yet. Click "Add room" to create one.
+            No rooms yet. Click &quot;Add room&quot; to create one.
           </div>
         ) : visible.map((r) => (
           <div key={r.id} className={`rounded-xl border p-4 ${r.active ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-50/60"}`} data-testid={`room-row-${r.id}`}>
@@ -88,7 +88,7 @@ export default function MeetingRoomsPanel() {
                   {r.location && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {r.location}</span>}
                 </div>
               </div>
-              {r.active && (
+              {r.active ? (
                 <div className="flex items-center gap-1 shrink-0">
                   <Dialog open={editing?.id === r.id} onOpenChange={(v) => setEditing(v ? r : null)}>
                     <DialogTrigger asChild>
@@ -102,6 +102,19 @@ export default function MeetingRoomsPanel() {
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-lg text-emerald-700 border-emerald-200 hover:bg-emerald-50 shrink-0"
+                  onClick={async () => {
+                    try { await api.patch(`/rooms/${r.id}`, { active: true }); toast.success("Room reactivated"); load(); }
+                    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+                  }}
+                  data-testid={`reactivate-room-${r.id}`}
+                >
+                  Reactivate
+                </Button>
               )}
             </div>
             <div className="mt-3 flex flex-wrap gap-1.5">

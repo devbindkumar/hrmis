@@ -67,7 +67,28 @@ See `/app/memory/test_credentials.md`.
 - All notification calls are fire-and-forget safe — HR flows never break on WA failures
 - Token is stored encrypted-at-rest only via mongo (masked on every API response)
 
-## 2026-07-14 — Re-Check-In + Attendance Audit Log + CSV Export
+## 2026-07-17 — Meeting-Room Booking + Approval Flow
+### Rooms (fully manageable from day 1)
+- New `meeting_rooms` collection auto-seeded with 2 defaults per company (Conference Room A · 8 seats, Conference Room B · 4 seats). Idempotent — `ensure_default_rooms` no-ops when any room exists.
+- Full CRUD (`/api/rooms`) — super_admin & HR can add / edit / delete / reactivate. Features: TV, Whiteboard, Video conference, Projector, Phone, Wi-Fi. Location text field. Soft-delete via `active:false` so historic bookings still resolve the name.
+- New Settings panel (`MeetingRoomsPanel.jsx`) with add/edit/delete + "Show deactivated" toggle + Reactivate button for inactive rooms.
+
+### Booking flow (integrated into existing Meetings)
+- `POST /api/meetings` now accepts `room_id`, `is_recurring`, `recurrence`. Backend computes `duration_minutes` and marks meeting `pending` if duration > 120min or recurring (super_admin/HR auto-approve their own). 
+- Hard conflict block: 409 with a human-readable message ("Conference Room A is already booked from 10:00 to 10:30 for 'Standup' by Maya Patel.") — cancelled + rejected meetings are excluded.
+- Live conflict check on the Meetings dialog via new `POST /api/rooms/check-conflict` — debounced 350ms; shows green "Room is available for this slot" or red "Room already booked" banner.
+- HR approval flow: `GET /api/meetings/pending-approval`, `POST /:id/approve`, `POST /:id/reject`. Approve re-checks the room (returns 409 if the slot was taken meanwhile) and only THEN fires the invites/email/WhatsApp — nothing is sent while pending.
+- Amber HR-approval banner appears in the create dialog whenever duration > 2h or recurring is ticked; submit button label changes to "Submit for approval".
+- Recurrence UI supports daily / weekly / bi-weekly / monthly with count (backend stores the dict as-is; no re-scheduling of children yet).
+
+### Notifications
+- WhatsApp `meeting_scheduled` template + email invite continue to fire — but ONLY on the transition to approved/auto_approved so nobody gets spammed for rejected meetings.
+- HR receives in-app notifications for every new pending request; organiser is pinged on approve/reject.
+
+### Testing
+- New pytest suite `/app/backend/tests/test_iter16_rooms_meetings.py` — 16/16 pass. Iteration 16 report: 100% backend + all critical frontend flows.
+
+
 ### Re-Check-In (P0 request)
 - New endpoint `POST /api/attendance/re-check-in` — reopens today's attendance for an employee who accidentally checked out. Appends a fresh open session; the previous check_out is preserved in the audit log.
 - Available to **all authenticated roles** (super_admin / hr / manager / employee) — the shared `CheckInWidget` on the Admin/HR/Manager dashboards now shows a green "Re-check in" button in the "Day complete" state alongside the "Wrapped up at HH:MM" pill.
