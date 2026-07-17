@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import api, { formatApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +36,23 @@ export default function Meetings() {
   const [employees, setEmployees] = useState([]);
   const [rooms, setRooms] = useState([]);
   const [open, setOpen] = useState(false);
+  const [prefill, setPrefill] = useState(null);
+  const [params, setParams] = useSearchParams();
+
+  // Deep-link from RoomAvailability: ?new=1&room_id=...&start=ISO&end=ISO
+  useEffect(() => {
+    if (params.get("new") === "1") {
+      setPrefill({
+        room_id: params.get("room_id") || "",
+        starts_at: params.get("start") || "",
+        ends_at: params.get("end") || "",
+      });
+      setOpen(true);
+      // Strip the params so re-opening from scratch works cleanly
+      const next = new URLSearchParams();
+      setParams(next, { replace: true });
+    }
+  }, [params, setParams]);
 
   const load = async () => {
     const [m, e, r] = await Promise.all([
@@ -92,9 +110,11 @@ export default function Meetings() {
               </Button>
             </DialogTrigger>
             <NewMeetingDialog
+              key={prefill ? `${prefill.room_id}-${prefill.starts_at}` : "fresh"}
               employees={employees.filter((e) => e.user_id !== user?.id)}
               rooms={rooms}
-              onCreated={() => { setOpen(false); load(); }}
+              prefill={prefill}
+              onCreated={() => { setOpen(false); setPrefill(null); load(); }}
             />
           </Dialog>
         </div>
@@ -300,24 +320,25 @@ function ApprovalsQueue({ items, onDecide }) {
   );
 }
 
-function NewMeetingDialog({ employees, rooms, onCreated }) {
-  const initStart = new Date();
-  initStart.setMinutes(0, 0, 0);
-  initStart.setHours(initStart.getHours() + 1);
-  const initEnd = new Date(initStart);
-  initEnd.setMinutes(30);
-
+function NewMeetingDialog({ employees, rooms, prefill, onCreated }) {
   const toLocal = (d) => {
     const off = d.getTimezoneOffset() * 60000;
     return new Date(d.getTime() - off).toISOString().slice(0, 16);
   };
+  const initStart = prefill?.starts_at ? new Date(prefill.starts_at) : (() => {
+    const d = new Date(); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 1); return d;
+  })();
+  const initEnd = prefill?.ends_at ? new Date(prefill.ends_at) : (() => {
+    const d = new Date(initStart); d.setMinutes(d.getMinutes() + 30); return d;
+  })();
+
   const [form, setForm] = useState({
     title: "",
     description: "",
     starts_at: toLocal(initStart),
     ends_at: toLocal(initEnd),
     location: "Online",
-    room_id: "",
+    room_id: prefill?.room_id || "",
     is_recurring: false,
     recurrence: { frequency: "weekly", count: 4 },
     attendee_user_ids: [],

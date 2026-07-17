@@ -1,0 +1,49 @@
+{
+  "summary": "Iteration 17 — Room availability calendar-grid. Backend: 12/13 pytest cases pass (day-schedule shape, RBAC for all 4 roles + 401 no-auth, cancelled/rejected bookings excluded, pending included, sorted by starts_at, midnight-spanning bookings appear on both days, deactivated room hidden from grid but historic bookings still retrievable via /rooms/{id}/bookings). 1 backend minor bug found: date validation accepts any string with 2 dashes (e.g., '2026-13-40', 'abcd-ef-gh', 'not-a-date') returning 200 instead of 400 — request spec requires 400. Frontend: all 9 scripted flows pass — sidebar Rooms link in both AdminLayout & EmployeeLayout, RoomAvailability renders 2 rows + 48 half-hour slots, deep-link ?date=2026-08-01 survives reload, Prev/Next/Today wire URL, weekend badge shows on Sat and hides on Mon, now-line only when viewing today, indigo blocks for approved/auto_approved bookings, block cursor-default + tooltip 'title · time · booker', clicking empty slot navigates to /admin/meetings?new=1&... (or /employee/meetings for employees) and pre-fills dialog with room + start/end + shows green 'Conference Room A is available for this slot' hint, legend labels present.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/rooms/day-schedule",
+        "issue": "date validation is too lax — accepts any string with 2 dashes. e.g. date=not-a-date, date=2026-13-40, date=abcd-ef-gh all return 200 with empty bookings instead of the required 400 'date must be YYYY-MM-DD'. Root cause: rooms.py line 178-183 uses `date.split('-')` unpack (only counts parts) rather than validating with datetime.strptime(date, '%Y-%m-%d'). Fix: replace the try/except with `datetime.strptime(date, '%Y-%m-%d')`."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "New meeting dialog (from RoomAvailability slot click)", "issues": ["Console warning: 'Missing Description or aria-describedby={undefined} for DialogContent' — pre-existing from iteration 16, non-blocking."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter17_day_schedule.py",
+    "/app/test_reports/pytest/iter17_day_schedule.xml"
+  ],
+  "action_items": [
+    "Backend: strengthen date validation in GET /api/rooms/day-schedule using `datetime.strptime(date, '%Y-%m-%d')` so semantically invalid dates like '2026-13-40' return 400 as documented.",
+    "(Nit, still open from iter 16) Add DialogDescription to NewMeetingDialog to silence Radix a11y warning."
+  ],
+  "critical_code_review_comments": [
+    "routes/rooms.py day-schedule uses correct overlap query (starts_at < end AND ends_at > start) so midnight-spanning meetings show on both days — verified.",
+    "routes/rooms.py — day-schedule builds UTC-only [00:00, 23:59:59.999999] window per date. This is documented but could mis-attribute bookings for users in non-UTC timezones (a meeting starting at 23:30 local Aug 1 may fall on Aug 2 UTC). Not a bug per current spec, but worth calling out — the UI localises via toLocaleTimeString so blocks render at correct local slot within the visible 08:00-20:00 axis.",
+    "RoomAvailability.jsx — good use of key={prefill.room_id-starts_at} on NewMeetingDialog to reset form state per deep-link. Room select value is a controlled string that resolves correctly once /rooms fetch completes (verified in test — sub-second delay).",
+    "RoomAvailability.jsx bookingToBlock computes width based on clamped startMin (Math.max(0, startMin)) — for bookings starting before 08:00 the left is 0 and width still shrinks correctly. For bookings ending after 20:00 the width Math.min clamps to canvas — verified by 'Workshop 14:00-17:00' rendering correctly.",
+    "date param setParams uses functional updater and `replace: true` — good, does not push into history stack for every keystroke.",
+    "Only 259 lines — well below the 700-line splitting threshold. Clean separation between grid rendering and prefill navigation.",
+    "cursor-default + non-clickable booking blocks (`className` contains cursor-default and no onClick) — prevents accidental rebooking. Good."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter17_day_schedule.py (new)"
+  ],
+  "success_rate": {
+    "backend": "92% (12/13 — 1 minor validation gap)",
+    "frontend": "100% (9/9 scripted flows)"
+  },
+  "test_credentials": "Used credentials from /app/memory/test_credentials.md — admin@acme.com (super_admin), jordan@acme.com (hr), alex@acme.com (manager), maya@acme.com (employee).",
+  "seed_data_creation": "Created and cleaned up ~8 TEST_ds_* meetings across 45-125 days in the future. All deleted at end of respective tests. One TEST_ds_inact_* room was created and soft-deleted (safe — hidden from default GET /api/rooms).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_iter17_day_schedule.py fully covers day-schedule. All 13 tests pass except test_invalid_date_format_400 (documented backend minor bug). Regression suite from iter 16 still valid at test_iter16_rooms_meetings.py. Frontend data-testids: room-availability, grid-row-{id}, grid-timeline-{id}, slot-{roomId}-{minute}, booking-block-{id}, now-line-{roomId}, date-picker, prev-day, next-day, today-btn, room-grid, nav-rooms (admin), emp-nav-rooms (employee). The deep-link flow tested: /admin/rooms → slot click → /admin/meetings?new=1&room_id=&start=&end= → new-meeting-dialog opens with meeting-room-select prefilled + meeting-start/meeting-end prefilled + room-available-hint visible.",
+  "rca of the issue": "Backend: day-schedule date validation only splits string on '-' and unpacks 3 parts. `'not-a-date'.split('-')` returns ['not','a','date'] — passes unpack, doesn't raise. Fix: `datetime.strptime(date, '%Y-%m-%d')` in the try block. Also handles invalid month/day combos like 2026-13-40 or 2026-02-30. This is the only real defect found."
+}

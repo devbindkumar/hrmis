@@ -168,6 +168,46 @@ async def delete_room(room_id: str, admin: dict = Depends(require_roles("super_a
     return {"success": True}
 
 
+@router.get("/day-schedule")
+async def day_schedule(date: str, user: dict = Depends(get_current_user)):
+    """All active rooms + their bookings for the given date — powers the availability grid."""
+    db = get_db()
+    cid = company_id_of(user)
+    await ensure_default_rooms(cid)
+    # Build ISO range for the entire day in UTC (server-side is UTC; the UI localises)
+    try:
+        y, m, d = date.split("-")
+        start = f"{date}T00:00:00+00:00"
+        end = f"{date}T23:59:59.999999+00:00"
+    except Exception:
+        raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
+
+    rooms = await db.meeting_rooms.find(
+        {"company_id": cid, "active": True}, {"_id": 0},
+    ).sort("name", 1).to_list(200)
+    ids = [r["id"] for r in rooms]
+
+    bookings = await db.meetings.find({
+        "company_id": cid, "room_id": {"$in": ids},
+        "status": {"$ne": "cancelled"},
+        "approval_status": {"$ne": "rejected"},
+        "starts_at": {"$lt": end},
+        "ends_at": {"$gt": start},
+    }, {
+        "_id": 0, "id": 1, "title": 1, "starts_at": 1, "ends_at": 1,
+        "created_by_name": 1, "approval_status": 1, "room_id": 1,
+    }).sort("starts_at", 1).to_list(500)
+
+    by_room: dict = {rid: [] for rid in ids}
+    for b in bookings:
+        by_room.setdefault(b["room_id"], []).append(b)
+
+    return {
+        "date": date,
+        "rooms": [{**r, "bookings": by_room.get(r["id"], [])} for r in rooms],
+    }
+
+
 @router.get("/{room_id}/bookings")
 async def list_bookings(
     room_id: str,

@@ -32,6 +32,7 @@ import MyPayslips from "@/pages/employee/MyPayslips";
 import MyExpenses from "@/pages/employee/MyExpenses";
 
 import Meetings from "@/pages/Meetings";
+import RoomAvailability from "@/pages/RoomAvailability";
 
 import CareersHome from "@/pages/careers/CareersHome";
 import JobDetail from "@/pages/careers/JobDetail";
@@ -70,6 +71,7 @@ function App() {
             <Route path="leave" element={<AdminLeave />} />
             <Route path="wfh" element={<AdminWFH />} />
             <Route path="meetings" element={<div className="p-6"><Meetings /></div>} />
+            <Route path="rooms" element={<RoomAvailability />} />
             <Route path="announcements" element={<AdminAnnouncements />} />
             <Route path="reports" element={<AdminReports />} />
             <Route path="payroll" element={<AdminPayroll />} />
@@ -95,6 +97,7 @@ function App() {
             <Route path="payslips" element={<MyPayslips />} />
             <Route path="expenses" element={<MyExpenses />} />
             <Route path="meetings" element={<Meetings />} />
+            <Route path="rooms" element={<RoomAvailability />} />
             <Route path="profile" element={<Profile />} />
           </Route>
 
