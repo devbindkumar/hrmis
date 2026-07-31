@@ -67,7 +67,20 @@ See `/app/memory/test_credentials.md`.
 - All notification calls are fire-and-forget safe — HR flows never break on WA failures
 - Token is stored encrypted-at-rest only via mongo (masked on every API response)
 
-## 2026-07-17 — Room Availability Calendar Grid
+## 2026-07-31 — Forgot Password via WhatsApp OTP
+### Backend (auth.py)
+- **`POST /api/auth/forgot-password`** — always returns 200 to prevent enumeration. Generates a 6-digit OTP, stores SHA-256 hash + 10-min expiry + 3 attempts_left in `password_reset_otps`, fires WhatsApp template `hrmis_password_reset_otp` via existing `whatsapp_service.send_template()`. Rate-limited: 45s cooldown, 5 sends/hour rolling. Returns masked `phone_hint` like `••••••••9999`.
+- **`POST /api/auth/verify-otp`** — constant-time compare via `hmac.compare_digest`. 3 wrong attempts invalidate the OTP. Successful verify mints a 15-min JWT reset_token bound to the OTP via `jti`.
+- **`POST /api/auth/reset-password`** — validates JWT, updates bcrypt hash, clears any login lockout row, marks OTP `consumed_at`. Single-use enforced via `jti` binding.
+- New WhatsApp template key `password_reset_otp` (default: `hrmis_password_reset_otp`) with 3 body params (name, code, expiry_minutes).
+- Indexes on `password_reset_otps`: unique id, (user_id, created_at DESC), (email, used).
+
+### Frontend
+- **`ForgotPassword.jsx`** — 3-step wizard (email → OTP → new password) with visual step indicator. 6 OTP boxes powered by a single hidden input (bulletproof against multi-input race conditions). 45s resend cooldown, throttle-aware, autoComplete="one-time-code" for iOS SMS bridging (also picks up WhatsApp on Android). Eye-icon toggle for password visibility. Back-to-sign-in and change-email links.
+- **`Login.jsx`** — new "Forgot?" link next to Password label routes to `/forgot-password`.
+- Iteration 18 report: 100% backend + frontend flows pass. Fixed a Button-onClick-passes-event bug during self-test that made verifyOtp read the event object as the code.
+
+
 - New `GET /api/rooms/day-schedule?date=YYYY-MM-DD` — returns every active room + its bookings for the day, sorted by start time. Overlap query keeps midnight-spanning meetings visible on both days. Strict date validation via `datetime.strptime`.
 - New `/admin/rooms` & `/employee/rooms` route (RoomAvailability.jsx) — horizontal Gantt-style grid: rooms as rows, 08:00-20:00 axis in half-hour columns.
 - Booking blocks render indigo for confirmed / amber for pending-approval — non-clickable so users can't accidentally rebook.

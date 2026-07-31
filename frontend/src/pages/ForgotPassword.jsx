@@ -49,16 +49,25 @@ export default function ForgotPassword() {
     setBusy(true);
     try {
       const { data } = await axios.post(`${API}/api/auth/forgot-password`, { email });
+      // Throttled: don't clear boxes, don't reset cooldown, stay on current step
+      if (data.throttled) {
+        toast.error("Too many code requests. Please try again in an hour.");
+        return;
+      }
       setPhoneHint(data.phone_hint || "");
       if (!isResend) setStep(2);
-      setCooldown(45);
-      // Reset OTP input on resend
+      // Cooldown mirrors the server (45s), or a longer wait if the server flagged one
+      setCooldown(data.cooldown ? 45 : 45);
       if (isResend) setOtp(Array(OTP_LEN).fill(""));
-      toast.success(
-        data.phone_hint
-          ? `We sent a code on WhatsApp to ${data.phone_hint}`
-          : "If that email is registered, a code has been sent."
-      );
+      if (data.cooldown) {
+        toast.info("A code was already sent recently. Check WhatsApp.");
+      } else {
+        toast.success(
+          data.phone_hint
+            ? `We sent a code on WhatsApp to ${data.phone_hint}`
+            : "If that email is registered, a code has been sent."
+        );
+      }
     } catch (e) {
       toast.error(extractError(e.response?.data?.detail));
     } finally { setBusy(false); }
@@ -75,8 +84,7 @@ export default function ForgotPassword() {
       setStep(3);
     } catch (e) {
       toast.error(extractError(e.response?.data?.detail));
-      // shake + clear on wrong OTP
-      setOtp(Array(OTP_LEN).fill(""));
+      // Don't clear boxes — user should correct manually. Just refocus the first box.
       document.querySelector('[data-testid="otp-input-0"]')?.focus();
     } finally { setBusy(false); }
   };
@@ -169,8 +177,8 @@ export default function ForgotPassword() {
 
           {step === 2 && (
             <div className="space-y-5" data-testid="forgot-step-otp">
-              <OtpBoxes otp={otp} setOtp={setOtp} onComplete={verifyOtp} />
-              <Button onClick={verifyOtp} disabled={busy || otp.join("").length !== OTP_LEN}
+              <OtpBoxes otp={otp} setOtp={setOtp} />
+              <Button onClick={() => verifyOtp()} disabled={busy || otp.join("").length !== OTP_LEN}
                       className="w-full h-11 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-medium"
                       data-testid="forgot-verify-otp-button">
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" />
@@ -236,55 +244,52 @@ export default function ForgotPassword() {
   );
 }
 
-function OtpBoxes({ otp, setOtp, onComplete }) {
-  const refs = useRef([]);
+function OtpBoxes({ otp, setOtp }) {
+  // Single hidden input drives 6 visual boxes — bulletproof against multi-input state races.
+  const hiddenRef = useRef(null);
+  const code = otp.join("");
 
-  const set = (i, v) => {
-    const digit = v.replace(/\D/g, "").slice(-1);
-    setOtp((prev) => {
-      const next = [...prev];
-      next[i] = digit;
-      // move focus + auto-verify from the *fresh* next[] value, not the stale outer `otp`
-      if (digit && i < OTP_LEN - 1) refs.current[i + 1]?.focus();
-      if (digit && next.every((d) => d.length === 1)) {
-        setTimeout(() => onComplete(next.join("")), 60);
-      }
-      return next;
-    });
-  };
-  const back = (i, e) => {
-    if (e.key === "Backspace" && !otp[i] && i > 0) refs.current[i - 1]?.focus();
-    if (e.key === "ArrowLeft" && i > 0) refs.current[i - 1]?.focus();
-    if (e.key === "ArrowRight" && i < OTP_LEN - 1) refs.current[i + 1]?.focus();
-  };
-  const paste = (e) => {
-    const clip = (e.clipboardData || window.clipboardData).getData("text");
-    const digits = clip.replace(/\D/g, "").slice(0, OTP_LEN);
-    if (digits.length === 0) return;
-    e.preventDefault();
-    const next = digits.padEnd(OTP_LEN, "").split("");
-    setOtp(next);
-    const lastIdx = Math.min(digits.length, OTP_LEN) - 1;
-    refs.current[lastIdx]?.focus();
-    if (digits.length === OTP_LEN) setTimeout(() => onComplete(digits), 60);
+  useEffect(() => {
+    hiddenRef.current?.focus();
+  }, []);
+
+  const onChange = (e) => {
+    const digits = e.target.value.replace(/\D/g, "").slice(0, OTP_LEN);
+    setOtp(Array.from({ length: OTP_LEN }, (_, i) => digits[i] || ""));
   };
 
   return (
-    <div className="flex justify-between gap-2 max-w-sm" onPaste={paste} data-testid="otp-boxes">
-      {otp.map((d, i) => (
-        <input
-          key={i}
-          ref={(el) => (refs.current[i] = el)}
-          value={d}
-          onChange={(e) => set(i, e.target.value)}
-          onKeyDown={(e) => back(i, e)}
-          inputMode="numeric"
-          maxLength={1}
-          autoFocus={i === 0}
-          className="w-12 h-14 rounded-lg border border-slate-200 bg-white text-center text-2xl font-semibold tabular-nums text-slate-900 focus:outline-none focus:border-slate-900 focus:ring-4 focus:ring-slate-900/10"
-          data-testid={`otp-input-${i}`}
-        />
-      ))}
+    <div className="relative" data-testid="otp-boxes">
+      <input
+        ref={hiddenRef}
+        type="text"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        value={code}
+        onChange={onChange}
+        maxLength={OTP_LEN}
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+        data-testid="otp-hidden-input"
+        aria-label="One-time code"
+      />
+      <div
+        className="flex justify-between gap-2 max-w-sm pointer-events-none"
+        onClick={() => hiddenRef.current?.focus()}
+      >
+        {Array.from({ length: OTP_LEN }).map((_, i) => (
+          <div
+            key={i}
+            className={`w-12 h-14 rounded-lg border ${
+              code.length === i
+                ? "border-slate-900 ring-4 ring-slate-900/10"
+                : "border-slate-200"
+            } bg-white grid place-items-center text-2xl font-semibold tabular-nums text-slate-900`}
+            data-testid={`otp-input-${i}`}
+          >
+            {otp[i] || ""}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
