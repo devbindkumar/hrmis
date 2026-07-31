@@ -28,6 +28,7 @@ DEFAULT_TEMPLATES = {
     "wfh_request": "hrmis_wfh_request",
     "meeting_scheduled": "hrmis_meeting_scheduled",
     "checkin_checkout": "hrmis_checkin_checkout",
+    "password_reset_otp": "hrmis_password_reset_otp",
 }
 
 DEFAULT_EVENTS_ENABLED = {
@@ -36,6 +37,7 @@ DEFAULT_EVENTS_ENABLED = {
     "wfh_request": True,
     "meeting_scheduled": True,
     "checkin_checkout": True,
+    "password_reset_otp": True,
 }
 
 # Only these statuses trigger a WA notification when "status_update" is enabled

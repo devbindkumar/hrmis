@@ -5,6 +5,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute, { RoleRedirect } from "@/components/ProtectedRoute";
 
 import Login from "@/pages/Login";
+import ForgotPassword from "@/pages/ForgotPassword";
 import AdminLayout from "@/components/layouts/AdminLayout";
 import EmployeeLayout from "@/components/layouts/EmployeeLayout";
 
@@ -45,6 +46,7 @@ function App() {
         <Routes>
           <Route path="/" element={<RoleRedirect />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
 
           {/* Public careers */}
           <Route path="/careers" element={<CareersHome />} />

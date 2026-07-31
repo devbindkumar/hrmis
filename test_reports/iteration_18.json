@@ -1,0 +1,36 @@
+{
+  "summary": "Tested Forgot Password (WhatsApp OTP) feature end-to-end. Backend: 7/7 pytest cases pass (unknown email 200 no-enum, valid email → masked hint + SHA-256 hashed OTP, 45s cooldown, 3 wrong attempts invalidate OTP, correct OTP mints reset_token, single-use reset_token rejects reuse, new-password login works while old fails). Frontend: full 3-step wizard works — /login Forgot? link → /forgot-password step 1 (email) → step 2 (6 OTP boxes with paste + 45s resend countdown) → step 3 (new+confirm password with eye toggle) → redirect to /login → sign in with new password → /employee with 'Welcome back, Maya' toast.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "OTP auto-verify", "issue": "verify-otp is invoked twice per completion (one successful, one immediate 400). Root cause: setTimeout(onComplete) is scheduled from inside the setState updater function, so React 18 StrictMode double-invokes it in dev. Harmless in prod, but in dev it consumes an attempt against the freshly-verified (now used=true) OTP → visible 400 in devtools right after the success. Fix: schedule onComplete outside the updater (e.g., via a useEffect that watches otp completeness) or guard onComplete with a ref.", "affected_selectors": ["otp-input-5"]},
+      {"flow": "Forgot-password when throttled (>=5 sends/hour)", "issue": "Backend returns 200 with {throttled:true} and no new OTP is created; frontend still advances to step 2 and shows 'We sent a code on WhatsApp to …9999', misleading the user. Consider surfacing a distinct message when data.throttled === true (e.g., 'You've requested too many codes. Please try again in an hour.') and/or NOT clearing the previous OTP boxes.", "affected_selectors": ["forgot-send-otp-button"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_forgot_password_flow.py",
+    "/app/test_reports/pytest/forgot_password.xml"
+  ],
+  "action_items": [
+    "(Nice-to-have) Move onComplete scheduling out of the setState updater to avoid StrictMode double-fire and the resulting stray verify-otp 400.",
+    "(Nice-to-have) Handle {throttled:true} response distinctly on the frontend so throttled users see a meaningful message instead of being sent to the OTP screen."
+  ],
+  "critical_code_review_comments": [
+    "auth.py forgot_password: throttled branch returns {throttled:true} but does NOT create a new OTP; frontend cannot distinguish. Consider adding a distinct message field the UI can display, or returning cooldown-style behaviour (empty phone_hint or explicit user-facing detail).",
+    "OTP is hashed with SHA-256 (good, matches spec) and compared via hmac.compare_digest (constant-time). ✓",
+    "reset-password correctly binds JTI on OTP so token reuse is blocked and returns 'This reset link has already been used' on the second call. ✓",
+    "Frontend OtpBoxes.set() schedules setTimeout(onComplete) inside the setState updater — React 18 StrictMode dev-mode side effect causes onComplete to be called twice. Recommend moving auto-verify trigger to a useEffect that watches otp completeness."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_forgot_password_flow.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@acme.com/Admin@123, jordan@acme.com/Demo@123, maya@acme.com/Demo@123 (restored)",
+  "seed_data_creation": "None — used existing maya@acme.com. Temporarily disabled db.whatsapp_configs.enabled during tests, re-enabled after. Restored maya password to Demo@123 after tests.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "OTP is exposed in /var/log/supervisor/backend.err.log ONLY when tenant's whatsapp_configs.enabled=false. Rate limits: 45s cooldown, 5 sends/hour (rolling). To avoid throttling between test runs, delete db.password_reset_otps for the test email. Password reset regenerates the login lockout row so a subsequent Demo@123 login will get 401 (not lockout).",
+  "rca of the issue": "N/A — no blockers found. Two minor UX nits documented above."
+}

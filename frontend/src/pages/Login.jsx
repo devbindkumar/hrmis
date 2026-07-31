@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, Loader2, Briefcase } from "lucide-react";
 import { toast } from "sonner";
 
@@ -81,7 +81,16 @@ export default function Login() {
               />
             </div>
             <div>
-              <Label htmlFor="password" className="text-xs font-semibold uppercase tracking-[0.05em] text-slate-500">Password</Label>
+              <div className="flex items-baseline justify-between">
+                <Label htmlFor="password" className="text-xs font-semibold uppercase tracking-[0.05em] text-slate-500">Password</Label>
+                <Link
+                  to="/forgot-password"
+                  className="text-xs font-medium text-slate-600 hover:text-slate-900 underline-offset-2 hover:underline"
+                  data-testid="forgot-password-link"
+                >
+                  Forgot?
+                </Link>
+              </div>
               <Input
                 id="password"
                 type="password"
