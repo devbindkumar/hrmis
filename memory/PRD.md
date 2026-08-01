@@ -162,3 +162,9 @@ See `/app/memory/test_credentials.md`.
 - P2: Third-party calendar sync (Google Calendar, Outlook)
 - P2: Group/team chat (only 1:1 currently)
 - P2: Calendar grid view for meetings
+
+## 2026-02-01 — WhatsApp OTP template rename
+- Default `password_reset_otp` template renamed from `hrmis_password_reset_otp` → **`hrms_account_verification`** (AzMarq-approved template).
+- Body params reduced from `[name, otp, expiry_minutes]` → `[otp]` (template body: "Enter {{1}} to complete your HRMS account verification. Do not disclose this code to anyone.").
+- Files touched: `backend/whatsapp_service.py`, `backend/auth.py`.
+- Verified via curl on `/api/auth/forgot-password` — outbox row shows `template=hrms_account_verification` with `params=[<6-digit-otp>]`.

@@ -28,7 +28,7 @@ DEFAULT_TEMPLATES = {
     "wfh_request": "hrmis_wfh_request",
     "meeting_scheduled": "hrmis_meeting_scheduled",
     "checkin_checkout": "hrmis_checkin_checkout",
-    "password_reset_otp": "hrmis_password_reset_otp",
+    "password_reset_otp": "hrms_account_verification",
 }
 
 DEFAULT_EVENTS_ENABLED = {

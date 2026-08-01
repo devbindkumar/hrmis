@@ -275,7 +275,9 @@ async def forgot_password(body: ForgotBody):
         if cfg and cfg.get("enabled") and (cfg.get("events_enabled") or {}).get("password_reset_otp", True):
             tmpl = ((cfg.get("templates") or {}).get("password_reset_otp")
                     or DEFAULT_TEMPLATES["password_reset_otp"])
-            params = [user["name"], otp_code, str(OTP_EXPIRY_MINUTES)]
+            # New template `hrms_account_verification` uses a single body param: the OTP code.
+            # Body: "Enter {{1}} to complete your HRMS account verification. Do not disclose this code to anyone."
+            params = [otp_code]
             await send_template(user["company_id"], phone, tmpl, params)
         else:
             log.warning("[forgot-password] WhatsApp not configured for company %s — OTP for %s: %s",
