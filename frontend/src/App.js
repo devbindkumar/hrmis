@@ -67,7 +67,14 @@ function App() {
             }
           >
             <Route index element={<AdminOverview />} />
-            <Route path="employees" element={<AdminEmployees />} />
+            <Route
+              path="employees"
+              element={
+                <ProtectedRoute roles={["super_admin", "hr"]}>
+                  <AdminEmployees />
+                </ProtectedRoute>
+              }
+            />
             <Route path="org" element={<AdminOrgChart />} />
             <Route path="attendance" element={<AdminAttendance />} />
             <Route path="leave" element={<AdminLeave />} />

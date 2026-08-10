@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 
 const NAV = [
   { to: "/admin", label: "Overview", icon: LayoutDashboard, end: true },
-  { to: "/admin/employees", label: "Employees", icon: Users },
+  { to: "/admin/employees", label: "Employees", icon: Users, roles: ["super_admin", "hr"] },
   { to: "/admin/org", label: "Org chart", icon: Network },
   { to: "/admin/attendance", label: "Attendance", icon: Clock },
   { to: "/admin/leave", label: "Leave", icon: CalendarDays },
@@ -97,7 +97,7 @@ export default function AdminLayout() {
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1">
-          {NAV.filter((n) => !n.superAdminOnly || user?.role === "super_admin").map((n) => (
+          {NAV.filter((n) => (!n.superAdminOnly || user?.role === "super_admin") && (!n.roles || n.roles.includes(user?.role))).map((n) => (
             <NavLink
               key={n.to}
               to={n.to}

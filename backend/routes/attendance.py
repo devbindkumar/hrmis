@@ -213,12 +213,27 @@ async def my_history(user: dict = Depends(get_current_user), days: int = 30):
 
 @router.get("/monitor")
 async def monitor(admin: dict = Depends(require_roles("super_admin", "hr", "manager")), day: Optional[str] = None):
-    """Return attendance for everyone for a specific day (default today)."""
+    """Return attendance for everyone for a specific day (default today).
+
+    Scope:
+      • super_admin / hr — every active employee in the company.
+      • manager — only the manager's own direct reports (employees whose
+        `manager_id` equals the manager's employee record id).
+    """
     db = get_db()
     cid = company_id_of(admin)
     target = day or _today_str()
 
-    employees = await db.employees.find({"status": "active", "company_id": cid}, {"_id": 0}).to_list(500)
+    emp_query: dict = {"status": "active", "company_id": cid}
+    if admin.get("role") == "manager":
+        me = await db.employees.find_one(
+            {"user_id": admin["id"], "company_id": cid}, {"_id": 0, "id": 1}
+        )
+        # If the manager has no employee record OR no direct reports we still
+        # return an empty rows list rather than 500.
+        emp_query["manager_id"] = me["id"] if me else "__none__"
+
+    employees = await db.employees.find(emp_query, {"_id": 0}).to_list(500)
     user_ids = [e["user_id"] for e in employees]
     attendance = await db.attendance.find({"user_id": {"$in": user_ids}, "date": target}, {"_id": 0}).to_list(500)
     a_map = {a["user_id"]: a for a in attendance}
