@@ -24,13 +24,13 @@ const NAV = [
   { to: "/admin/meetings", label: "Meetings", icon: Video },
   { to: "/admin/rooms", label: "Rooms", icon: MapPin },
   { to: "/admin/announcements", label: "Announcements", icon: Megaphone },
-  { to: "/admin/payroll", label: "Payroll", icon: Banknote },
+  { to: "/admin/payroll", label: "Payroll", icon: Banknote, roles: ["super_admin", "hr"] },
   { to: "/admin/expenses", label: "Expenses", icon: Receipt },
   { to: "/admin/jobs", label: "Jobs", icon: Briefcase },
   { to: "/admin/reports", label: "Reports", icon: BarChart3 },
-  { to: "/admin/companies", label: "Companies", icon: Globe2 },
+  { to: "/admin/companies", label: "Companies", icon: Globe2, roles: ["super_admin", "hr"] },
   { to: "/admin/whatsapp", label: "WhatsApp", icon: MessageCircle, superAdminOnly: true },
-  { to: "/admin/settings", label: "Settings", icon: Settings },
+  { to: "/admin/settings", label: "Settings", icon: Settings, roles: ["super_admin", "hr"] },
 ];
 
 export default function AdminLayout() {
@@ -174,7 +174,9 @@ export default function AdminLayout() {
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>{user?.email}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem asChild><Link to="/admin/settings">Settings</Link></DropdownMenuItem>
+                {(user?.role === "super_admin" || user?.role === "hr") && (
+                  <DropdownMenuItem asChild><Link to="/admin/settings">Settings</Link></DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={() => { logout(); navigate("/login"); }} className="text-rose-600">Sign out</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

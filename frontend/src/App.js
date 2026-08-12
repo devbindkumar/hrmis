@@ -83,12 +83,33 @@ function App() {
             <Route path="rooms" element={<RoomAvailability />} />
             <Route path="announcements" element={<AdminAnnouncements />} />
             <Route path="reports" element={<AdminReports />} />
-            <Route path="payroll" element={<AdminPayroll />} />
+            <Route
+              path="payroll"
+              element={
+                <ProtectedRoute roles={["super_admin", "hr"]}>
+                  <AdminPayroll />
+                </ProtectedRoute>
+              }
+            />
             <Route path="expenses" element={<AdminExpenses />} />
             <Route path="jobs" element={<AdminJobs />} />
-            <Route path="companies" element={<AdminCompanies />} />
+            <Route
+              path="companies"
+              element={
+                <ProtectedRoute roles={["super_admin", "hr"]}>
+                  <AdminCompanies />
+                </ProtectedRoute>
+              }
+            />
             <Route path="whatsapp" element={<AdminWhatsApp />} />
-            <Route path="settings" element={<AdminSettings />} />
+            <Route
+              path="settings"
+              element={
+                <ProtectedRoute roles={["super_admin", "hr"]}>
+                  <AdminSettings />
+                </ProtectedRoute>
+              }
+            />
           </Route>
 
           {/* Employee */}
