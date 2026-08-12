@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -13,6 +14,11 @@ router = APIRouter(prefix="/api/departments", tags=["departments"])
 class DeptCreate(BaseModel):
     name: str
     head: str = ""
+
+
+class DeptUpdate(BaseModel):
+    name: Optional[str] = None
+    head: Optional[str] = None
 
 
 @router.get("")
@@ -41,6 +47,54 @@ async def create_department(body: DeptCreate, admin: dict = Depends(require_role
     await db.departments.insert_one(doc)
     doc.pop("_id", None)
     return doc
+
+
+@router.patch("/{dept_id}")
+async def update_department(
+    dept_id: str,
+    body: DeptUpdate,
+    admin: dict = Depends(require_roles("super_admin", "hr")),
+):
+    db = get_db()
+    cid = company_id_of(admin)
+    existing = await db.departments.find_one({"id": dept_id, "company_id": cid}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Department not found")
+
+    patch = body.model_dump(exclude_unset=True)
+    new_name = patch.get("name")
+    if new_name is not None:
+        new_name = new_name.strip()
+        if not new_name:
+            raise HTTPException(status_code=400, detail="Department name cannot be empty")
+        if new_name != existing["name"]:
+            clash = await db.departments.find_one(
+                {"name": new_name, "company_id": cid, "id": {"$ne": dept_id}}
+            )
+            if clash:
+                raise HTTPException(status_code=400, detail="Another department with this name already exists")
+        patch["name"] = new_name
+
+    if not patch:
+        return {**existing, "headcount": await db.employees.count_documents(
+            {"department": existing["name"], "status": "active", "company_id": cid}
+        )}
+
+    patch["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.departments.update_one({"id": dept_id, "company_id": cid}, {"$set": patch})
+
+    # Keep employees.department in sync when the department name changes.
+    if new_name and new_name != existing["name"]:
+        await db.employees.update_many(
+            {"department": existing["name"], "company_id": cid},
+            {"$set": {"department": new_name}},
+        )
+
+    updated = await db.departments.find_one({"id": dept_id, "company_id": cid}, {"_id": 0})
+    updated["headcount"] = await db.employees.count_documents(
+        {"department": updated["name"], "status": "active", "company_id": cid}
+    )
+    return updated
 
 
 @router.delete("/{dept_id}")

@@ -4,28 +4,52 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Building2, Plus, Trash2, Settings as SettingsIcon, Camera, Clock, ShieldCheck, RefreshCw, Copy, ExternalLink } from "lucide-react";
+import { Building2, Plus, Trash2, Pencil, Settings as SettingsIcon, Camera, Clock, ShieldCheck, RefreshCw, Copy, ExternalLink } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/contexts/AuthContext";
 import LeaveTypesPanel from "@/pages/admin/LeaveTypesPanel";
 import MeetingRoomsPanel from "@/pages/admin/MeetingRoomsPanel";
 
+const NO_HEAD = "__none__";
+
 export default function AdminSettings() {
   const [departments, setDepartments] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", head: "" });
+  const [editing, setEditing] = useState(null); // { id, name, head }
 
   const load = () => api.get("/departments").then((r) => setDepartments(r.data));
-  useEffect(() => { load(); }, []);
+  const loadEmployees = () =>
+    api
+      .get("/employees", { params: { status: "active" } })
+      .then((r) => setEmployees(r.data || []))
+      .catch(() => setEmployees([]));
+
+  useEffect(() => { load(); loadEmployees(); }, []);
 
   const add = async () => {
     if (!form.name) return;
     try {
-      await api.post("/departments", form);
+      await api.post("/departments", { name: form.name, head: form.head || "" });
       toast.success("Department added");
       setForm({ name: "", head: "" });
       setOpen(false);
+      load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+
+  const saveEdit = async () => {
+    if (!editing?.id || !editing.name) return;
+    try {
+      await api.patch(`/departments/${editing.id}`, {
+        name: editing.name,
+        head: editing.head || "",
+      });
+      toast.success("Department updated");
+      setEditing(null);
       load();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
@@ -36,6 +60,26 @@ export default function AdminSettings() {
     toast.success("Department removed");
     load();
   };
+
+  const renderHeadSelect = (value, onChange, testid) => (
+    <Select
+      value={value ? value : NO_HEAD}
+      onValueChange={(v) => onChange(v === NO_HEAD ? "" : v)}
+    >
+      <SelectTrigger className="mt-1.5" data-testid={testid}>
+        <SelectValue placeholder="Select an employee…" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={NO_HEAD}>No head</SelectItem>
+        {employees.map((e) => (
+          <SelectItem key={e.id} value={e.name}>
+            {e.name}
+            {e.designation ? ` · ${e.designation}` : ""}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 
   return (
     <div className="p-6 space-y-6 animate-fade-up" data-testid="admin-settings">
@@ -58,8 +102,14 @@ export default function AdminSettings() {
               <DialogContent className="rounded-2xl">
                 <DialogHeader><DialogTitle className="font-display">New department</DialogTitle></DialogHeader>
                 <div className="space-y-3">
-                  <div><Label>Name</Label><Input value={form.name} onChange={(e)=>setForm({...form, name: e.target.value})} className="mt-1.5" data-testid="dept-name" /></div>
-                  <div><Label>Head (optional)</Label><Input value={form.head} onChange={(e)=>setForm({...form, head: e.target.value})} className="mt-1.5" /></div>
+                  <div>
+                    <Label>Name</Label>
+                    <Input value={form.name} onChange={(e)=>setForm({...form, name: e.target.value})} className="mt-1.5" data-testid="dept-name" />
+                  </div>
+                  <div>
+                    <Label>Head (optional)</Label>
+                    {renderHeadSelect(form.head, (v) => setForm({ ...form, head: v }), "dept-head-select")}
+                  </div>
                 </div>
                 <DialogFooter><Button onClick={add} className="bg-slate-900 hover:bg-slate-800 text-white" data-testid="dept-submit">Create</Button></DialogFooter>
               </DialogContent>
@@ -72,12 +122,66 @@ export default function AdminSettings() {
                   <div className="text-sm font-medium text-slate-900">{d.name}</div>
                   <div className="text-xs text-slate-500">{d.head || 'No head'} · {d.headcount} {d.headcount === 1 ? 'person' : 'people'}</div>
                 </div>
-                <button onClick={()=>remove(d.id)} className="text-slate-400 hover:text-rose-600" data-testid={`del-dept-${d.id}`}>
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setEditing({ id: d.id, name: d.name, head: d.head || "" })}
+                    className="text-slate-400 hover:text-slate-900 p-1.5 rounded-md hover:bg-slate-100"
+                    data-testid={`edit-dept-${d.id}`}
+                    title="Edit department"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={()=>remove(d.id)}
+                    className="text-slate-400 hover:text-rose-600 p-1.5 rounded-md hover:bg-rose-50"
+                    data-testid={`del-dept-${d.id}`}
+                    title="Delete department"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
+
+          <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
+            <DialogContent className="rounded-2xl">
+              <DialogHeader>
+                <DialogTitle className="font-display">Edit department</DialogTitle>
+              </DialogHeader>
+              {editing && (
+                <div className="space-y-3">
+                  <div>
+                    <Label>Name</Label>
+                    <Input
+                      value={editing.name}
+                      onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                      className="mt-1.5"
+                      data-testid="dept-edit-name"
+                    />
+                  </div>
+                  <div>
+                    <Label>Head</Label>
+                    {renderHeadSelect(
+                      editing.head,
+                      (v) => setEditing({ ...editing, head: v }),
+                      "dept-edit-head-select"
+                    )}
+                  </div>
+                </div>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditing(null)} data-testid="dept-edit-cancel">Cancel</Button>
+                <Button
+                  onClick={saveEdit}
+                  className="bg-slate-900 hover:bg-slate-800 text-white"
+                  data-testid="dept-edit-save"
+                >
+                  Save changes
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
 
         <div className="surface p-6">
