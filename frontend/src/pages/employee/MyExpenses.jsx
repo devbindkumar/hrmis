@@ -46,7 +46,7 @@ export default function MyExpenses() {
     try {
       const { data } = await api.get(`/expenses/${id}/receipt`, { responseType: "blob" });
       const url = URL.createObjectURL(data);
-      setReceipt({ id, url });
+      setReceipt({ id, url, mime: data.type || "" });
     } catch (e) { toast.error("Unable to load receipt"); }
   };
 
@@ -287,12 +287,33 @@ export function NewExpenseDialog({ categories, onCreated, initial = null }) {
 
 function ReceiptViewer({ receipt, onClose }) {
   if (!receipt) return null;
+  const isPdf = (receipt.mime || "").toLowerCase().includes("pdf");
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-3xl" data-testid="receipt-viewer">
-        <DialogHeader><DialogTitle>Receipt</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle className="flex items-center justify-between pr-8">
+            <span>Receipt</span>
+            <a
+              href={receipt.url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs font-medium text-blue-600 hover:underline"
+              data-testid="receipt-open-new-tab"
+            >Open in new tab</a>
+          </DialogTitle>
+        </DialogHeader>
         <div className="mt-2 rounded-lg overflow-hidden bg-slate-100">
-          <img src={receipt.url} alt="Receipt" className="w-full max-h-[70vh] object-contain" />
+          {isPdf ? (
+            <iframe
+              src={receipt.url}
+              title="Receipt PDF"
+              className="w-full h-[70vh] bg-white"
+              data-testid="receipt-pdf-frame"
+            />
+          ) : (
+            <img src={receipt.url} alt="Receipt" className="w-full max-h-[70vh] object-contain" />
+          )}
         </div>
       </DialogContent>
     </Dialog>
