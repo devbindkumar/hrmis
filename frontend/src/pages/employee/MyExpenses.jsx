@@ -153,7 +153,7 @@ function SummaryCard({ label, value, tone }) {
   );
 }
 
-function NewExpenseDialog({ categories, onCreated }) {
+export function NewExpenseDialog({ categories, onCreated }) {
   const [form, setForm] = useState({
     category: categories[0] || "Travel",
     amount: "",

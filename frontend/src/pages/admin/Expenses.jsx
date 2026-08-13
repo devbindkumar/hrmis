@@ -5,11 +5,12 @@ import api, { formatApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Loader2, Receipt, Paperclip, Check, X, Banknote, User } from "lucide-react";
+import { Loader2, Receipt, Paperclip, Check, X, Banknote, User, Plus, Trash2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { NewExpenseDialog } from "@/pages/employee/MyExpenses";
 
 const STATUS_STYLES = {
   pending:  { label: "Pending",  cls: "bg-amber-50 text-amber-700 border-amber-200" },
@@ -24,25 +25,44 @@ export default function AdminExpenses() {
   const [items, setItems] = useState([]);
   const [status, setStatus] = useState("pending");
   const [summary, setSummary] = useState(null);
-  const [scope, setScope] = useState("all"); // all | team
+  const [scope, setScope] = useState("all"); // all | team | mine
   const [decision, setDecision] = useState(null); // { id, action, name, category, amount, currency }
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [receipt, setReceipt] = useState(null);
+  const [categories, setCategories] = useState([]);
+  const [newOpen, setNewOpen] = useState(false);
 
   const load = async () => {
     try {
       const params = { status };
       if (scope === "team") params.scope = "team";
+      const listUrl = scope === "mine" ? "/expenses/mine" : "/expenses/all";
       const [a, b] = await Promise.all([
-        api.get("/expenses/all", { params }),
+        api.get(listUrl, { params: scope === "mine" ? {} : params }),
         api.get("/expenses/summary"),
       ]);
-      setItems(a.data);
+      // /expenses/mine ignores the status filter → apply client-side
+      const rows = scope === "mine" && status !== "all"
+        ? a.data.filter((r) => r.status === status)
+        : a.data;
+      setItems(rows);
       setSummary(b.data);
     } catch { /* ignore */ }
   };
   useEffect(() => { load(); }, [status, scope]);
+  useEffect(() => {
+    api.get("/expenses/categories").then((r) => setCategories(r.data.categories || [])).catch(() => {});
+  }, []);
+
+  const deleteMine = async (id) => {
+    if (!window.confirm("Delete this claim?")) return;
+    try {
+      await api.delete(`/expenses/${id}`);
+      toast.success("Claim deleted");
+      load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
 
   const openReceipt = async (id) => {
     try {
@@ -80,16 +100,30 @@ export default function AdminExpenses() {
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
           <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-900">Expense claims</h1>
-          <p className="text-sm text-slate-500 mt-1">Review reimbursement requests and mark them paid.</p>
+          <p className="text-sm text-slate-500 mt-1">Review reimbursement requests, submit your own, and mark them paid.</p>
         </div>
-        {user?.role === "manager" && (
+        <div className="flex items-center gap-3 flex-wrap">
           <Tabs value={scope} onValueChange={setScope}>
             <TabsList>
-              <TabsTrigger value="team" data-testid="scope-team">My team</TabsTrigger>
+              {user?.role === "manager" && (
+                <TabsTrigger value="team" data-testid="scope-team">My team</TabsTrigger>
+              )}
               <TabsTrigger value="all" data-testid="scope-all">All claims</TabsTrigger>
+              <TabsTrigger value="mine" data-testid="scope-mine">My claims</TabsTrigger>
             </TabsList>
           </Tabs>
-        )}
+          <Dialog open={newOpen} onOpenChange={setNewOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-slate-900 hover:bg-slate-800 text-white rounded-lg" data-testid="admin-new-expense-btn">
+                <Plus className="h-4 w-4 mr-1.5" /> New claim
+              </Button>
+            </DialogTrigger>
+            <NewExpenseDialog
+              categories={categories}
+              onCreated={() => { setNewOpen(false); setScope("mine"); setStatus("pending"); load(); }}
+            />
+          </Dialog>
+        </div>
       </div>
 
       {summary && (
@@ -181,6 +215,16 @@ export default function AdminExpenses() {
                         <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => openDecision(m, "paid")} data-testid={`pay-expense-${m.id}`}>
                           <Banknote className="h-3.5 w-3.5 mr-1" /> Mark reimbursed
                         </Button>
+                      )}
+                      {m.status === "pending" && m.user_id === user?.id && (
+                        <button
+                          onClick={() => deleteMine(m.id)}
+                          className="text-slate-400 hover:text-rose-600 ml-1 align-middle"
+                          title="Delete your claim"
+                          data-testid={`admin-delete-expense-${m.id}`}
+                        >
+                          <Trash2 className="h-4 w-4 inline" />
+                        </button>
                       )}
                     </td>
                   </tr>
