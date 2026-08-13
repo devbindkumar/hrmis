@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Loader2, Receipt, Paperclip, Trash2, X } from "lucide-react";
+import { Plus, Loader2, Receipt, Paperclip, Trash2, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
 
 const STATUS_STYLES = {
@@ -23,6 +23,7 @@ export default function MyExpenses() {
   const [mine, setMine] = useState([]);
   const [categories, setCategories] = useState([]);
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(null); // claim being edited
   const [receipt, setReceipt] = useState(null); // { id, url }
 
   const load = async () => {
@@ -121,9 +122,14 @@ export default function MyExpenses() {
                         </button>
                       )}
                       {m.status === "pending" && (
-                        <button onClick={() => remove(m.id)} className="text-slate-400 hover:text-rose-600" title="Delete claim" data-testid={`delete-expense-${m.id}`}>
-                          <Trash2 className="h-4 w-4 inline" />
-                        </button>
+                        <>
+                          <button onClick={() => setEditing(m)} className="text-slate-400 hover:text-slate-900 mr-2" title="Edit claim" data-testid={`edit-expense-${m.id}`}>
+                            <Pencil className="h-4 w-4 inline" />
+                          </button>
+                          <button onClick={() => remove(m.id)} className="text-slate-400 hover:text-rose-600" title="Delete claim" data-testid={`delete-expense-${m.id}`}>
+                            <Trash2 className="h-4 w-4 inline" />
+                          </button>
+                        </>
                       )}
                     </td>
                   </tr>
@@ -135,6 +141,16 @@ export default function MyExpenses() {
       </div>
 
       <ReceiptViewer receipt={receipt} onClose={() => { if (receipt?.url) URL.revokeObjectURL(receipt.url); setReceipt(null); }} />
+
+      <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
+        {editing && (
+          <NewExpenseDialog
+            categories={categories}
+            initial={editing}
+            onCreated={() => { setEditing(null); load(); }}
+          />
+        )}
+      </Dialog>
     </div>
   );
 }
@@ -153,23 +169,25 @@ function SummaryCard({ label, value, tone }) {
   );
 }
 
-export function NewExpenseDialog({ categories, onCreated }) {
+export function NewExpenseDialog({ categories, onCreated, initial = null }) {
+  const isEdit = !!initial;
   const [form, setForm] = useState({
-    category: categories[0] || "Travel",
-    amount: "",
-    currency: "INR",
-    date_incurred: new Date().toISOString().slice(0, 10),
-    description: "",
+    category: initial?.category || categories[0] || "Travel",
+    amount: initial ? String(initial.amount) : "",
+    currency: initial?.currency || "INR",
+    date_incurred: initial?.date_incurred || new Date().toISOString().slice(0, 10),
+    description: initial?.description || "",
   });
   const [receiptB64, setReceiptB64] = useState(null);
   const [receiptName, setReceiptName] = useState(null);
+  const [removeReceipt, setRemoveReceipt] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const pickFile = (file) => {
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) { toast.error("Receipt must be under 5 MB"); return; }
     const reader = new FileReader();
-    reader.onload = () => { setReceiptB64(reader.result); setReceiptName(file.name); };
+    reader.onload = () => { setReceiptB64(reader.result); setReceiptName(file.name); setRemoveReceipt(false); };
     reader.readAsDataURL(file);
   };
 
@@ -178,8 +196,16 @@ export function NewExpenseDialog({ categories, onCreated }) {
     if (!form.description.trim()) { toast.error("Description is required"); return; }
     setBusy(true);
     try {
-      await api.post("/expenses", { ...form, amount: +form.amount, receipt_b64: receiptB64 });
-      toast.success("Expense submitted for approval");
+      if (isEdit) {
+        const payload = { ...form, amount: +form.amount };
+        if (receiptB64) payload.receipt_b64 = receiptB64;
+        else if (removeReceipt) payload.remove_receipt = true;
+        await api.patch(`/expenses/${initial.id}`, payload);
+        toast.success("Claim updated");
+      } else {
+        await api.post("/expenses", { ...form, amount: +form.amount, receipt_b64: receiptB64 });
+        toast.success("Expense submitted for approval");
+      }
       onCreated();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
     finally { setBusy(false); }
@@ -187,7 +213,7 @@ export function NewExpenseDialog({ categories, onCreated }) {
 
   return (
     <DialogContent className="rounded-2xl max-w-lg" data-testid="new-expense-dialog">
-      <DialogHeader><DialogTitle className="font-display">New expense claim</DialogTitle></DialogHeader>
+      <DialogHeader><DialogTitle className="font-display">{isEdit ? "Edit expense claim" : "New expense claim"}</DialogTitle></DialogHeader>
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -222,10 +248,22 @@ export function NewExpenseDialog({ categories, onCreated }) {
         </div>
         <div>
           <Label>Receipt (optional)</Label>
+          {isEdit && initial?.has_receipt && !receiptName && !removeReceipt && (
+            <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              <Paperclip className="h-3.5 w-3.5" />
+              <span className="flex-1">Existing receipt attached — upload a new file to replace it.</span>
+              <button
+                type="button"
+                onClick={() => setRemoveReceipt(true)}
+                className="text-slate-500 hover:text-rose-600 font-medium"
+                data-testid="expense-remove-existing-receipt"
+              >Remove</button>
+            </div>
+          )}
           <div className="mt-1.5">
             <label className="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 hover:border-slate-400 bg-slate-50/60 px-3 py-2.5 cursor-pointer" data-testid="expense-receipt-label">
               <Paperclip className="h-4 w-4 text-slate-500" />
-              <span className="text-sm text-slate-600 truncate flex-1">{receiptName || "Attach an image or PDF (≤ 5 MB)"}</span>
+              <span className="text-sm text-slate-600 truncate flex-1">{receiptName || (removeReceipt ? "Receipt will be removed on save" : "Attach an image or PDF (≤ 5 MB)")}</span>
               <input type="file" accept="image/*,application/pdf" hidden onChange={(e) => pickFile(e.target.files?.[0])} data-testid="expense-receipt-input" />
               {receiptName && (
                 <button
@@ -240,7 +278,7 @@ export function NewExpenseDialog({ categories, onCreated }) {
       </div>
       <DialogFooter>
         <Button onClick={submit} disabled={busy} className="bg-slate-900 hover:bg-slate-800 text-white" data-testid="expense-submit">
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit for approval"}
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : (isEdit ? "Save changes" : "Submit for approval")}
         </Button>
       </DialogFooter>
     </DialogContent>

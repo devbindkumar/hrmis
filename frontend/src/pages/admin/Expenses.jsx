@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Loader2, Receipt, Paperclip, Check, X, Banknote, User, Plus, Trash2 } from "lucide-react";
+import { Loader2, Receipt, Paperclip, Check, X, Banknote, User, Plus, Trash2, Pencil } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { NewExpenseDialog } from "@/pages/employee/MyExpenses";
 
@@ -32,6 +32,7 @@ export default function AdminExpenses() {
   const [receipt, setReceipt] = useState(null);
   const [categories, setCategories] = useState([]);
   const [newOpen, setNewOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
 
   const load = async () => {
     try {
@@ -203,12 +204,17 @@ export default function AdminExpenses() {
                       )}
                       {m.status === "pending" && (
                         <>
-                          <Button size="sm" variant="outline" className="text-emerald-700 border-emerald-200 hover:bg-emerald-50 mr-1.5" onClick={() => openDecision(m, "approve")} data-testid={`approve-expense-${m.id}`}>
-                            <Check className="h-3.5 w-3.5 mr-1" /> Approve
-                          </Button>
-                          <Button size="sm" variant="outline" className="text-rose-700 border-rose-200 hover:bg-rose-50" onClick={() => openDecision(m, "reject")} data-testid={`reject-expense-${m.id}`}>
-                            <X className="h-3.5 w-3.5 mr-1" /> Reject
-                          </Button>
+                          {/* Only super_admin can approve their own claim; managers/HR cannot self-approve */}
+                          {(m.user_id !== user?.id || user?.role === "super_admin") && (
+                            <>
+                              <Button size="sm" variant="outline" className="text-emerald-700 border-emerald-200 hover:bg-emerald-50 mr-1.5" onClick={() => openDecision(m, "approve")} data-testid={`approve-expense-${m.id}`}>
+                                <Check className="h-3.5 w-3.5 mr-1" /> Approve
+                              </Button>
+                              <Button size="sm" variant="outline" className="text-rose-700 border-rose-200 hover:bg-rose-50" onClick={() => openDecision(m, "reject")} data-testid={`reject-expense-${m.id}`}>
+                                <X className="h-3.5 w-3.5 mr-1" /> Reject
+                              </Button>
+                            </>
+                          )}
                         </>
                       )}
                       {m.status === "approved" && canReimburse && (
@@ -217,14 +223,24 @@ export default function AdminExpenses() {
                         </Button>
                       )}
                       {m.status === "pending" && m.user_id === user?.id && (
-                        <button
-                          onClick={() => deleteMine(m.id)}
-                          className="text-slate-400 hover:text-rose-600 ml-1 align-middle"
-                          title="Delete your claim"
-                          data-testid={`admin-delete-expense-${m.id}`}
-                        >
-                          <Trash2 className="h-4 w-4 inline" />
-                        </button>
+                        <>
+                          <button
+                            onClick={() => setEditing(m)}
+                            className="text-slate-400 hover:text-slate-900 ml-1 align-middle"
+                            title="Edit your claim"
+                            data-testid={`admin-edit-expense-${m.id}`}
+                          >
+                            <Pencil className="h-4 w-4 inline" />
+                          </button>
+                          <button
+                            onClick={() => deleteMine(m.id)}
+                            className="text-slate-400 hover:text-rose-600 ml-1 align-middle"
+                            title="Delete your claim"
+                            data-testid={`admin-delete-expense-${m.id}`}
+                          >
+                            <Trash2 className="h-4 w-4 inline" />
+                          </button>
+                        </>
                       )}
                     </td>
                   </tr>
@@ -294,6 +310,16 @@ export default function AdminExpenses() {
           </DialogContent>
         </Dialog>
       )}
+
+      <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
+        {editing && (
+          <NewExpenseDialog
+            categories={categories}
+            initial={editing}
+            onCreated={() => { setEditing(null); load(); }}
+          />
+        )}
+      </Dialog>
     </div>
   );
 }

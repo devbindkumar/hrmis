@@ -56,6 +56,21 @@ class ExpenseDecision(BaseModel):
     note: Optional[str] = ""
 
 
+class ExpenseUpdate(BaseModel):
+    category: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    amount: Optional[float] = Field(default=None, gt=0, le=10_000_000)
+    currency: Optional[str] = Field(default=None, min_length=3, max_length=8)
+    date_incurred: Optional[str] = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    description: Optional[str] = Field(default=None, min_length=1, max_length=1000)
+    receipt_b64: Optional[str] = None  # supply new base64 to replace; empty string to remove
+    remove_receipt: Optional[bool] = False
+
+    @field_validator("category")
+    @classmethod
+    def _clean_cat(cls, v: Optional[str]) -> Optional[str]:
+        return v.strip() if isinstance(v, str) else v
+
+
 def _receipt_path(cid: str, expense_id: str, ext: str) -> str:
     return f"receipts/{cid}/{expense_id}.{ext.lstrip('.')}"
 
@@ -262,6 +277,10 @@ async def approve_claim(
     db = get_db()
     cid = company_id_of(admin)
     claim = await _load_claim(db, expense_id, cid)
+    # Only super_admin can approve their own claim (or any manager/HR self-claim).
+    # Managers & HR may never approve claims they submitted themselves.
+    if claim["user_id"] == admin["id"] and admin.get("role") != "super_admin":
+        raise HTTPException(status_code=403, detail="You cannot approve your own claim")
     if claim["status"] != "pending":
         raise HTTPException(status_code=400, detail="Already decided")
     now = datetime.now(timezone.utc).isoformat()
@@ -292,6 +311,8 @@ async def reject_claim(
     db = get_db()
     cid = company_id_of(admin)
     claim = await _load_claim(db, expense_id, cid)
+    if claim["user_id"] == admin["id"] and admin.get("role") != "super_admin":
+        raise HTTPException(status_code=403, detail="You cannot reject your own claim")
     if claim["status"] != "pending":
         raise HTTPException(status_code=400, detail="Already decided")
     now = datetime.now(timezone.utc).isoformat()
@@ -357,6 +378,69 @@ async def get_receipt(expense_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Receipt file missing on disk")
     ct = claim.get("receipt_mime") or content_type or "application/octet-stream"
     return Response(content=data, media_type=ct)
+
+
+@router.patch("/{expense_id}")
+async def update_claim(
+    expense_id: str,
+    body: ExpenseUpdate,
+    user: dict = Depends(get_current_user),
+):
+    """Edit a pending expense claim.
+
+    Rules:
+      • Only the submitter (or super_admin/HR) can edit.
+      • Only claims in the "pending" status can be edited — once approved,
+        rejected, or paid, the record becomes immutable.
+    """
+    db = get_db()
+    cid = company_id_of(user)
+    claim = await _load_claim(db, expense_id, cid)
+
+    is_admin = user.get("role") in ("super_admin", "hr")
+    if claim["user_id"] != user["id"] and not is_admin:
+        raise HTTPException(status_code=403, detail="You can only edit your own claim")
+    if claim["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Only pending claims can be edited")
+
+    patch = body.model_dump(exclude_unset=True)
+
+    if patch.get("category") is not None:
+        cat = patch["category"]
+        if cat not in DEFAULT_CATEGORIES:
+            company = await db.companies.find_one({"id": cid}, {"_id": 0, "expense_categories": 1}) or {}
+            allowed = set((company.get("expense_categories") or DEFAULT_CATEGORIES))
+            if cat not in allowed:
+                raise HTTPException(status_code=400, detail=f"Unknown category '{cat}'")
+
+    update: dict = {}
+    if "category" in patch:      update["category"] = patch["category"]
+    if "amount" in patch:        update["amount"] = round(float(patch["amount"]), 2)
+    if "currency" in patch:      update["currency"] = patch["currency"].upper()
+    if "date_incurred" in patch: update["date_incurred"] = patch["date_incurred"]
+    if "description" in patch:   update["description"] = patch["description"]
+
+    # Optional receipt replacement / removal
+    new_b64 = patch.get("receipt_b64")
+    if new_b64:
+        ext, mime, raw = _detect_ext_and_mime(new_b64)
+        rp = _receipt_path(cid, expense_id, ext)
+        put_object(rp, raw, mime)
+        update["receipt_path"] = rp
+        update["receipt_mime"] = mime
+        update["has_receipt"] = True
+    elif patch.get("remove_receipt"):
+        update["receipt_path"] = None
+        update["receipt_mime"] = None
+        update["has_receipt"] = False
+
+    if not update:
+        return _strip(claim)
+
+    update["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.expense_claims.update_one({"id": expense_id}, {"$set": update})
+    updated = await db.expense_claims.find_one({"id": expense_id}, {"_id": 0})
+    return updated
 
 
 @router.delete("/{expense_id}")
