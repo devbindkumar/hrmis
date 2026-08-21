@@ -22,7 +22,9 @@ router = APIRouter(prefix="/api/extensions", tags=["extensions"])
 
 
 class ExtensionCreate(BaseModel):
-    employee_id: str = Field(min_length=1)
+    employee_id: Optional[str] = None
+    employee_name: Optional[str] = Field(default=None, max_length=120)
+    department: Optional[str] = Field(default=None, max_length=120)
     extension: str = Field(min_length=1, max_length=32)
     direct_dial: Optional[str] = Field(default=None, max_length=32)
     mobile: Optional[str] = Field(default=None, max_length=32)
@@ -30,6 +32,8 @@ class ExtensionCreate(BaseModel):
 
 class ExtensionUpdate(BaseModel):
     employee_id: Optional[str] = None
+    employee_name: Optional[str] = Field(default=None, max_length=120)
+    department: Optional[str] = Field(default=None, max_length=120)
     extension: Optional[str] = Field(default=None, min_length=1, max_length=32)
     direct_dial: Optional[str] = Field(default=None, max_length=32)
     mobile: Optional[str] = Field(default=None, max_length=32)
@@ -89,7 +93,6 @@ async def create_extension(
 ):
     db = get_db()
     cid = company_id_of(admin)
-    emp = await _load_employee(db, body.employee_id, cid)
 
     extension = body.extension.strip()
     if not extension:
@@ -100,22 +103,37 @@ async def create_extension(
     if clash:
         raise HTTPException(status_code=400, detail=f"Extension '{extension}' is already assigned")
 
-    # An employee can only hold one extension row (simpler UX; edit if you need to change)
-    dupe_emp = await db.extensions.find_one({"company_id": cid, "employee_id": body.employee_id})
-    if dupe_emp:
-        raise HTTPException(status_code=400, detail="This employee already has an extension. Edit it instead.")
+    # If an employee is linked → pull authoritative name & department from the master
+    # record and enforce one-extension-per-employee. If no employee is linked, the
+    # row represents a guest/vendor/contact and requires an explicit custom name.
+    employee_id = body.employee_id or None
+    if employee_id:
+        emp = await _load_employee(db, employee_id, cid)
+        dupe_emp = await db.extensions.find_one({"company_id": cid, "employee_id": employee_id})
+        if dupe_emp:
+            raise HTTPException(status_code=400, detail="This employee already has an extension. Edit it instead.")
+        name = emp.get("name")
+        department = emp.get("department")
+        user_id = emp.get("user_id")
+    else:
+        name = _clean(body.employee_name)
+        if not name:
+            raise HTTPException(status_code=400, detail="Please provide a name for the extension (or pick an employee)")
+        department = _clean(body.department)
+        user_id = None
 
     now = datetime.now(timezone.utc).isoformat()
     doc = {
         "id": str(uuid.uuid4()),
         "company_id": cid,
-        "employee_id": body.employee_id,
-        "user_id": emp.get("user_id"),
-        "employee_name": emp.get("name"),
-        "department": emp.get("department"),
+        "employee_id": employee_id,
+        "user_id": user_id,
+        "employee_name": name,
+        "department": department,
         "extension": extension,
         "direct_dial": _clean(body.direct_dial),
         "mobile": _clean(body.mobile),
+        "is_custom": employee_id is None,
         "created_at": now,
         "created_by": admin.get("name"),
     }
@@ -139,18 +157,36 @@ async def update_extension(
     patch = body.model_dump(exclude_unset=True)
     update: dict = {}
 
-    if "employee_id" in patch and patch["employee_id"] and patch["employee_id"] != existing.get("employee_id"):
-        emp = await _load_employee(db, patch["employee_id"], cid)
-        # Different employee — check they don't already hold one
-        dupe = await db.extensions.find_one(
-            {"company_id": cid, "employee_id": patch["employee_id"], "id": {"$ne": ext_id}}
-        )
-        if dupe:
-            raise HTTPException(status_code=400, detail="This employee already has an extension.")
-        update["employee_id"] = patch["employee_id"]
-        update["user_id"] = emp.get("user_id")
-        update["employee_name"] = emp.get("name")
-        update["department"] = emp.get("department")
+    if "employee_id" in patch:
+        new_eid = patch["employee_id"] or None
+        if new_eid != existing.get("employee_id"):
+            if new_eid:
+                emp = await _load_employee(db, new_eid, cid)
+                dupe = await db.extensions.find_one(
+                    {"company_id": cid, "employee_id": new_eid, "id": {"$ne": ext_id}}
+                )
+                if dupe:
+                    raise HTTPException(status_code=400, detail="This employee already has an extension.")
+                update["employee_id"] = new_eid
+                update["user_id"] = emp.get("user_id")
+                update["employee_name"] = emp.get("name")
+                update["department"] = emp.get("department")
+                update["is_custom"] = False
+            else:
+                update["employee_id"] = None
+                update["user_id"] = None
+                update["is_custom"] = True
+
+    # Allow explicit override of name / department only when the row is custom
+    # (not linked to a master employee). For linked rows the fields stay in sync.
+    linked_after_patch = update.get("employee_id", existing.get("employee_id")) is not None
+    if "employee_name" in patch and not linked_after_patch:
+        name = _clean(patch["employee_name"])
+        if not name:
+            raise HTTPException(status_code=400, detail="Name cannot be empty")
+        update["employee_name"] = name
+    if "department" in patch and not linked_after_patch:
+        update["department"] = _clean(patch["department"])
 
     if "extension" in patch and patch["extension"]:
         new_ext = patch["extension"].strip()

@@ -30,7 +30,14 @@ async def ensure_indexes():
     await db.expense_claims.create_index([("company_id", 1), ("status", 1)])
     await db.extensions.create_index("id", unique=True)
     await db.extensions.create_index([("company_id", 1), ("extension", 1)], unique=True)
-    await db.extensions.create_index([("company_id", 1), ("employee_id", 1)], unique=True)
+    # Uniqueness on employee_id only when linked to a real employee — custom
+    # (guest / non-employee) rows have `employee_id: null` and must be allowed
+    # to coexist.
+    await db.extensions.create_index(
+        [("company_id", 1), ("employee_id", 1)],
+        unique=True,
+        partialFilterExpression={"employee_id": {"$type": "string"}},
+    )
     await db.expense_claims.create_index([("company_id", 1), ("user_id", 1), ("created_at", -1)])
     await db.attendance_events.create_index("id", unique=True)
     await db.attendance_events.create_index([("company_id", 1), ("user_id", 1), ("date", 1)])

@@ -233,33 +233,60 @@ export default function TelephoneExtensions() {
 function ExtensionDialog({ employees, initial, onSaved }) {
   const isEdit = !!initial;
   const [form, setForm] = useState({
-    employee_id: initial?.employee_id || "",
+    employee_id: initial?.employee_id || null,
+    employee_name: initial?.employee_name || "",
+    department: initial?.department || "",
     extension: initial?.extension || "",
     direct_dial: initial?.direct_dial || "",
     mobile: initial?.mobile || "",
   });
+  const [suggestOpen, setSuggestOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  // Turn the master employee list into a filtered suggestion list based on
+  // what the user has typed. If the typed value exactly matches one of the
+  // employees we auto-link — otherwise the value stays as a free-text name
+  // (custom / guest extension).
+  const suggestions = (employees || [])
+    .filter((e) => {
+      const q = form.employee_name.trim().toLowerCase();
+      if (!q) return true;
+      return e.name.toLowerCase().includes(q);
+    })
+    .slice(0, 8);
+
+  const pickEmployee = (emp) => {
+    setForm({
+      ...form,
+      employee_id: emp.id,
+      employee_name: emp.name,
+      department: emp.department || "",
+    });
+    setSuggestOpen(false);
+  };
+
+  const clearLink = () => {
+    setForm({ ...form, employee_id: null });
+  };
+
   const submit = async () => {
-    if (!form.employee_id) { toast.error("Select an employee"); return; }
+    if (!form.employee_name.trim()) { toast.error("Name is required"); return; }
     if (!form.extension.trim()) { toast.error("Extension is required"); return; }
     setBusy(true);
     try {
+      const payload = {
+        employee_id: form.employee_id || null,
+        employee_name: form.employee_id ? null : form.employee_name.trim(),
+        department: form.employee_id ? null : (form.department.trim() || null),
+        extension: form.extension.trim(),
+        direct_dial: form.direct_dial.trim() || null,
+        mobile: form.mobile.trim() || null,
+      };
       if (isEdit) {
-        await api.patch(`/extensions/${initial.id}`, {
-          employee_id: form.employee_id,
-          extension: form.extension.trim(),
-          direct_dial: form.direct_dial.trim() || null,
-          mobile: form.mobile.trim() || null,
-        });
+        await api.patch(`/extensions/${initial.id}`, payload);
         toast.success("Extension updated");
       } else {
-        await api.post("/extensions", {
-          employee_id: form.employee_id,
-          extension: form.extension.trim(),
-          direct_dial: form.direct_dial.trim() || null,
-          mobile: form.mobile.trim() || null,
-        });
+        await api.post("/extensions", payload);
         toast.success("Extension added");
       }
       onSaved();
@@ -274,28 +301,72 @@ function ExtensionDialog({ employees, initial, onSaved }) {
       </DialogHeader>
       <div className="space-y-3">
         <div>
-          <Label>Employee</Label>
-          <Select
-            value={form.employee_id || undefined}
-            onValueChange={(v) => setForm({ ...form, employee_id: v })}
-            disabled={isEdit}
-          >
-            <SelectTrigger className="mt-1.5" data-testid="ext-employee-select">
-              <SelectValue placeholder="Select an employee…" />
-            </SelectTrigger>
-            <SelectContent>
-              {(employees || []).map((e) => (
-                <SelectItem key={e.id} value={e.id}>
-                  {e.name}{e.department ? ` · ${e.department}` : ""}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {isEdit && (
-            <p className="text-[11px] text-slate-400 mt-1">
-              Delete and re-create the record if you need to reassign to a different employee.
-            </p>
-          )}
+          <Label>Employee name</Label>
+          <div className="relative">
+            <Input
+              value={form.employee_name}
+              onChange={(e) => setForm({
+                ...form,
+                employee_name: e.target.value,
+                employee_id: null, // typing detaches from a linked employee
+              })}
+              onFocus={() => setSuggestOpen(true)}
+              onBlur={() => setTimeout(() => setSuggestOpen(false), 150)}
+              placeholder="Start typing to search employees or enter a custom name"
+              className="mt-1.5"
+              autoComplete="off"
+              data-testid="ext-name-input"
+            />
+            {suggestOpen && suggestions.length > 0 && (
+              <div
+                className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-64 overflow-y-auto"
+                data-testid="ext-name-suggest"
+              >
+                {suggestions.map((e) => (
+                  <button
+                    type="button"
+                    key={e.id}
+                    onMouseDown={(evt) => { evt.preventDefault(); pickEmployee(e); }}
+                    className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm border-b border-slate-50 last:border-0"
+                    data-testid={`ext-name-option-${e.id}`}
+                  >
+                    <div className="text-slate-900 font-medium">{e.name}</div>
+                    <div className="text-[11px] text-slate-500">
+                      {e.department || "—"}{e.designation ? ` · ${e.designation}` : ""}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="mt-1 flex items-center justify-between">
+            {form.employee_id ? (
+              <div className="text-[11px] text-emerald-700 flex items-center gap-1" data-testid="ext-name-linked">
+                <Building2 className="h-3 w-3" /> Linked to employee record
+                <button
+                  type="button"
+                  onClick={clearLink}
+                  className="ml-2 text-slate-500 hover:text-rose-600 underline"
+                  data-testid="ext-name-unlink"
+                >Use as custom name instead</button>
+              </div>
+            ) : (
+              <div className="text-[11px] text-slate-400">
+                Custom / guest entry — pick a suggestion above to link an employee.
+              </div>
+            )}
+          </div>
+        </div>
+        <div>
+          <Label>Department {form.employee_id && <span className="text-[11px] text-slate-400 ml-1">(from employee record)</span>}</Label>
+          <Input
+            value={form.department}
+            onChange={(e) => setForm({ ...form, department: e.target.value })}
+            placeholder="e.g. Reception, Facilities, External vendor"
+            className="mt-1.5"
+            disabled={!!form.employee_id}
+            data-testid="ext-dept-input"
+          />
         </div>
         <div>
           <Label>Extension number</Label>
