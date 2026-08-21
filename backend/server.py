@@ -30,6 +30,7 @@ from routes.whatsapp import router as whatsapp_router  # noqa: E402
 from routes.kiosk import router as kiosk_router  # noqa: E402
 from routes.expenses import router as expenses_router  # noqa: E402
 from routes.rooms import router as rooms_router  # noqa: E402
+from routes.extensions import router as extensions_router  # noqa: E402
 from migrations import run_all as run_migrations  # noqa: E402
 from seed import ensure_indexes, seed_admin_and_demo  # noqa: E402
 from storage import init_storage  # noqa: E402
@@ -85,6 +86,7 @@ app.include_router(whatsapp_router)
 app.include_router(kiosk_router)
 app.include_router(expenses_router)
 app.include_router(rooms_router)
+app.include_router(extensions_router)
 
 
 @app.on_event("startup")

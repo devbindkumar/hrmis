@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { Home, CalendarDays, House as HouseIcon, Video, User, LogOut, Briefcase, Bell, Banknote, Receipt, MapPin } from "lucide-react";
+import { Home, CalendarDays, House as HouseIcon, Video, User, LogOut, Briefcase, Bell, Banknote, Receipt, MapPin, Phone } from "lucide-react";
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -17,6 +17,7 @@ const NAV = [
   { to: "/employee/expenses", label: "Expenses", icon: Receipt },
   { to: "/employee/meetings", label: "Meetings", icon: Video },
   { to: "/employee/rooms", label: "Rooms", icon: MapPin },
+  { to: "/employee/extensions", label: "Extensions", icon: Phone },
   { to: "/employee/profile", label: "Profile", icon: User },
 ];
 

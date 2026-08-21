@@ -34,6 +34,7 @@ import MyExpenses from "@/pages/employee/MyExpenses";
 
 import Meetings from "@/pages/Meetings";
 import RoomAvailability from "@/pages/RoomAvailability";
+import TelephoneExtensions from "@/pages/TelephoneExtensions";
 
 import CareersHome from "@/pages/careers/CareersHome";
 import JobDetail from "@/pages/careers/JobDetail";
@@ -81,6 +82,7 @@ function App() {
             <Route path="wfh" element={<AdminWFH />} />
             <Route path="meetings" element={<div className="p-6"><Meetings /></div>} />
             <Route path="rooms" element={<RoomAvailability />} />
+            <Route path="extensions" element={<TelephoneExtensions />} />
             <Route path="announcements" element={<AdminAnnouncements />} />
             <Route path="reports" element={<AdminReports />} />
             <Route
@@ -128,6 +130,7 @@ function App() {
             <Route path="expenses" element={<MyExpenses />} />
             <Route path="meetings" element={<Meetings />} />
             <Route path="rooms" element={<RoomAvailability />} />
+            <Route path="extensions" element={<TelephoneExtensions />} />
             <Route path="profile" element={<Profile />} />
           </Route>
 
