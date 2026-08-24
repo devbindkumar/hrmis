@@ -158,6 +158,68 @@ function statusBadge(m) {
   return null;
 }
 
+// Render meeting description with automatic URL detection (so Google Meet /
+// Zoom / any http(s) link is a real clickable anchor) plus a "Show more"
+// toggle when the text runs past a few lines. `whitespace-pre-wrap` keeps
+// user-authored line breaks intact.
+const URL_REGEX = /(https?:\/\/[^\s<>"']+)/gi;
+
+function LinkifiedText({ text }) {
+  const parts = String(text).split(URL_REGEX);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (i % 2 === 1) {
+          // Strip a trailing punctuation char that isn't part of the URL
+          const cleaned = part.replace(/[.,;:!?)\]]+$/, "");
+          const trailing = part.slice(cleaned.length);
+          return (
+            <span key={i}>
+              <a
+                href={cleaned}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:text-blue-700 underline underline-offset-2 break-all"
+                onClick={(e) => e.stopPropagation()}
+                data-testid="meeting-desc-link"
+              >{cleaned}</a>
+              {trailing}
+            </span>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+}
+
+function MeetingDescription({ text }) {
+  const [expanded, setExpanded] = useState(false);
+  const needsClamp = text.length > 220 || text.split("\n").length > 3;
+  return (
+    <div className="mt-2">
+      <p
+        className={`text-sm text-slate-600 whitespace-pre-wrap break-words ${
+          needsClamp && !expanded ? "line-clamp-3" : ""
+        }`}
+        data-testid="meeting-description-body"
+      >
+        <LinkifiedText text={text} />
+      </p>
+      {needsClamp && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
+          className="mt-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+          data-testid="meeting-desc-toggle"
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function MeetingCard({ m, canCancel, onCancel, past, employees }) {
   const start = new Date(m.starts_at);
   const end = new Date(m.ends_at);
@@ -178,7 +240,7 @@ function MeetingCard({ m, canCancel, onCancel, past, employees }) {
             {start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} → {end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             {typeof m.duration_minutes === "number" && <> · {m.duration_minutes}m</>}
           </div>
-          {m.description && <p className="text-sm text-slate-600 mt-2 line-clamp-3">{m.description}</p>}
+          {m.description && <MeetingDescription text={m.description} />}
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
             {badge && (
               <Badge variant="outline" className={`rounded-full font-medium text-[10px] ${badge.cls}`}>{badge.label}</Badge>
