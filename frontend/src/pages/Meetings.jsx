@@ -11,7 +11,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import {
   Calendar as CalIcon, Plus, Video, MapPin, Users, Trash2, Repeat,
-  AlertTriangle, ShieldCheck, Clock3, Tv, PenSquare, MonitorSmartphone, Wifi, Phone, Presentation, Check, X,
+  AlertTriangle, ShieldCheck, Clock3, Tv, PenSquare, MonitorSmartphone, Wifi, Phone, Presentation, Check, X, Search,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
@@ -407,6 +407,19 @@ function NewMeetingDialog({ employees, rooms, prefill, onCreated }) {
   });
   const [conflict, setConflict] = useState(null);
   const [checking, setChecking] = useState(false);
+  const [inviteeQuery, setInviteeQuery] = useState("");
+
+  const filteredEmployees = employees.filter((e) => {
+    const q = inviteeQuery.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      (e.name || "").toLowerCase().includes(q) ||
+      (e.designation || "").toLowerCase().includes(q) ||
+      (e.department || "").toLowerCase().includes(q) ||
+      (e.email || "").toLowerCase().includes(q)
+    );
+  });
+  const selectedInvitees = employees.filter((e) => form.attendee_user_ids.includes(e.user_id));
 
   // duration in minutes (frontend guard so the banner matches server)
   const durationMinutes = (() => {
@@ -587,8 +600,51 @@ function NewMeetingDialog({ employees, rooms, prefill, onCreated }) {
         </div>
         <div>
           <Label>Invite teammates</Label>
-          <div className="mt-1.5 max-h-44 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-50" data-testid="invitee-list">
-            {employees.map((e) => (
+
+          {/* Selected chips — quick glance at who's already invited, click × to remove */}
+          {selectedInvitees.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1.5" data-testid="invitee-chips">
+              {selectedInvitees.map((e) => (
+                <span
+                  key={e.user_id}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 text-slate-700 pl-1 pr-2 py-1 text-xs"
+                >
+                  <Avatar className="h-5 w-5">
+                    <AvatarImage src={e.avatar_url} />
+                    <AvatarFallback className="text-[9px]">{e.name.split(" ").map(p => p[0]).slice(0, 2).join("")}</AvatarFallback>
+                  </Avatar>
+                  {e.name}
+                  <button
+                    type="button"
+                    onClick={() => toggle(e.user_id)}
+                    className="text-slate-400 hover:text-rose-600"
+                    aria-label={`Remove ${e.name}`}
+                    data-testid={`invitee-chip-remove-${e.user_id}`}
+                  >×</button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Search box */}
+          <div className="relative mt-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <Input
+              value={inviteeQuery}
+              onChange={(e) => setInviteeQuery(e.target.value)}
+              placeholder="Search by name, role or department…"
+              className="pl-9"
+              data-testid="invitee-search"
+              autoComplete="off"
+            />
+          </div>
+
+          <div className="mt-2 max-h-44 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-50" data-testid="invitee-list">
+            {filteredEmployees.length === 0 ? (
+              <div className="px-3 py-4 text-center text-xs text-slate-500" data-testid="invitee-empty">
+                No teammate matches “{inviteeQuery}”.
+              </div>
+            ) : filteredEmployees.map((e) => (
               <label key={e.user_id} className="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 cursor-pointer">
                 <Checkbox checked={form.attendee_user_ids.includes(e.user_id)} onCheckedChange={() => toggle(e.user_id)} />
                 <Avatar className="h-6 w-6"><AvatarImage src={e.avatar_url} /><AvatarFallback className="text-[10px]">{e.name.split(" ").map(p => p[0]).slice(0, 2).join("")}</AvatarFallback></Avatar>

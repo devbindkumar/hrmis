@@ -139,91 +139,93 @@ export default function TelephoneExtensions() {
             </div>
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
-                <th className="text-left font-semibold px-5 py-3">Employee</th>
-                <th className="text-left font-semibold px-5 py-3">Department</th>
-                <th className="text-left font-semibold px-5 py-3">Extension</th>
-                <th className="text-left font-semibold px-5 py-3">Direct dial</th>
-                <th className="text-left font-semibold px-5 py-3">Mobile</th>
-                {canEdit && <th className="px-5 py-3"></th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filtered.map((r) => (
-                <tr key={r.id} data-testid={`extension-row-${r.id}`}>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-full bg-slate-100 grid place-items-center overflow-hidden shrink-0">
-                        {r.avatar_url ? (
-                          <img src={r.avatar_url} alt="" className="h-full w-full object-cover" />
-                        ) : (
-                          <span className="text-xs font-medium text-slate-500">
-                            {(r.employee_name || "?").split(" ").map((p) => p[0]).slice(0, 2).join("")}
-                          </span>
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-slate-900 font-medium truncate">{r.employee_name || "—"}</div>
-                        {r.designation && <div className="text-[11px] text-slate-500 truncate">{r.designation}</div>}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3">
-                    {r.department ? (
-                      <Badge variant="outline" className="rounded-full text-slate-600 border-slate-200">
-                        <Building2 className="h-3 w-3 mr-1" /> {r.department}
-                      </Badge>
-                    ) : <span className="text-slate-400">—</span>}
-                  </td>
-                  <td className="px-5 py-3">
-                    <a
-                      href={`tel:${r.extension}`}
-                      className="inline-flex items-center gap-1.5 text-slate-900 font-medium font-mono hover:text-blue-600"
-                      data-testid={`extension-number-${r.id}`}
-                    >
-                      <PhoneCall className="h-3.5 w-3.5 text-slate-400" />
-                      {r.extension}
-                    </a>
-                  </td>
-                  <td className="px-5 py-3 text-slate-700 font-mono whitespace-nowrap">
-                    {r.direct_dial ? (
-                      <a href={`tel:${r.direct_dial}`} className="hover:text-blue-600">{r.direct_dial}</a>
-                    ) : <span className="text-slate-400">—</span>}
-                  </td>
-                  <td className="px-5 py-3 text-slate-700 font-mono whitespace-nowrap">
-                    {r.mobile ? (
-                      <a href={`tel:${r.mobile}`} className="inline-flex items-center gap-1 hover:text-blue-600">
-                        <Smartphone className="h-3.5 w-3.5 text-slate-400" />
-                        {r.mobile}
-                      </a>
-                    ) : <span className="text-slate-400">—</span>}
-                  </td>
-                  {canEdit && (
-                    <td className="px-5 py-3 text-right whitespace-nowrap">
-                      <button
-                        className="text-slate-400 hover:text-slate-900 p-1.5 rounded-md hover:bg-slate-100"
-                        onClick={() => setEditing(r)}
-                        title="Edit"
-                        data-testid={`edit-extension-${r.id}`}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        className="text-slate-400 hover:text-rose-600 p-1.5 rounded-md hover:bg-rose-50 ml-1"
-                        onClick={() => remove(r.id, r.employee_name)}
-                        title="Delete"
-                        data-testid={`delete-extension-${r.id}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
-                  )}
+          <div className="overflow-x-auto -mx-px" data-testid="extension-table-scroll">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead>
+                <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+                  <th className="text-left font-semibold px-5 py-3 whitespace-nowrap">Employee</th>
+                  <th className="text-left font-semibold px-5 py-3 whitespace-nowrap">Department</th>
+                  <th className="text-left font-semibold px-5 py-3 whitespace-nowrap">Extension</th>
+                  <th className="text-left font-semibold px-5 py-3 whitespace-nowrap">Direct dial</th>
+                  <th className="text-left font-semibold px-5 py-3 whitespace-nowrap">Mobile</th>
+                  {canEdit && <th className="px-5 py-3"></th>}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filtered.map((r) => (
+                  <tr key={r.id} data-testid={`extension-row-${r.id}`}>
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full bg-slate-100 grid place-items-center overflow-hidden shrink-0">
+                          {r.avatar_url ? (
+                            <img src={r.avatar_url} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <span className="text-xs font-medium text-slate-500">
+                              {(r.employee_name || "?").split(" ").map((p) => p[0]).slice(0, 2).join("")}
+                            </span>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-slate-900 font-medium truncate">{r.employee_name || "—"}</div>
+                          {r.designation && <div className="text-[11px] text-slate-500 truncate">{r.designation}</div>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      {r.department ? (
+                        <Badge variant="outline" className="rounded-full text-slate-600 border-slate-200">
+                          <Building2 className="h-3 w-3 mr-1" /> {r.department}
+                        </Badge>
+                      ) : <span className="text-slate-400">—</span>}
+                    </td>
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      <a
+                        href={`tel:${r.extension}`}
+                        className="inline-flex items-center gap-1.5 text-slate-900 font-medium font-mono hover:text-blue-600"
+                        data-testid={`extension-number-${r.id}`}
+                      >
+                        <PhoneCall className="h-3.5 w-3.5 text-slate-400" />
+                        {r.extension}
+                      </a>
+                    </td>
+                    <td className="px-5 py-3 text-slate-700 font-mono whitespace-nowrap">
+                      {r.direct_dial ? (
+                        <a href={`tel:${r.direct_dial}`} className="hover:text-blue-600">{r.direct_dial}</a>
+                      ) : <span className="text-slate-400">—</span>}
+                    </td>
+                    <td className="px-5 py-3 text-slate-700 font-mono whitespace-nowrap">
+                      {r.mobile ? (
+                        <a href={`tel:${r.mobile}`} className="inline-flex items-center gap-1 hover:text-blue-600">
+                          <Smartphone className="h-3.5 w-3.5 text-slate-400" />
+                          {r.mobile}
+                        </a>
+                      ) : <span className="text-slate-400">—</span>}
+                    </td>
+                    {canEdit && (
+                      <td className="px-5 py-3 text-right whitespace-nowrap">
+                        <button
+                          className="text-slate-400 hover:text-slate-900 p-1.5 rounded-md hover:bg-slate-100"
+                          onClick={() => setEditing(r)}
+                          title="Edit"
+                          data-testid={`edit-extension-${r.id}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          className="text-slate-400 hover:text-rose-600 p-1.5 rounded-md hover:bg-rose-50 ml-1"
+                          onClick={() => remove(r.id, r.employee_name)}
+                          title="Delete"
+                          data-testid={`delete-extension-${r.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
