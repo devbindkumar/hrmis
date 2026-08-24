@@ -11,7 +11,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import {
   Calendar as CalIcon, Plus, Video, MapPin, Users, Trash2, Repeat,
-  AlertTriangle, ShieldCheck, Clock3, Tv, PenSquare, MonitorSmartphone, Wifi, Phone, Presentation, Check, X, Search,
+  AlertTriangle, ShieldCheck, Clock3, Tv, PenSquare, MonitorSmartphone, Wifi, Phone, Presentation, Check, X, Search, ChevronDown,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
@@ -221,9 +221,13 @@ function MeetingDescription({ text }) {
 }
 
 function MeetingCard({ m, canCancel, onCancel, past, employees }) {
+  const [expanded, setExpanded] = useState(false);
   const start = new Date(m.starts_at);
   const end = new Date(m.ends_at);
   const attendees = employees.filter((e) => m.attendee_user_ids?.includes(e.user_id));
+  const organizer = employees.find((e) => e.user_id === m.organizer_user_id);
+  // Participants list = organizer first, then invitees (no duplicates)
+  const participants = [organizer, ...attendees.filter((a) => a.user_id !== m.organizer_user_id)].filter(Boolean);
   const badge = statusBadge(m);
   return (
     <div className={`surface p-5 card-hover ${past ? "opacity-70" : ""}`} data-testid={`meeting-card-${m.id}`}>
@@ -268,17 +272,68 @@ function MeetingCard({ m, canCancel, onCancel, past, employees }) {
             <><MapPin className="h-3.5 w-3.5" /> {m.location}</>
           )}
         </div>
-        <div className="flex items-center gap-1">
-          {attendees.slice(0, 4).map((a) => (
-            <Avatar key={a.id} className="h-6 w-6 ring-2 ring-white -ml-1.5">
-              <AvatarImage src={a.avatar_url} />
-              <AvatarFallback className="text-[10px] bg-slate-100">{a.name.split(" ").map(p => p[0]).slice(0, 2).join("")}</AvatarFallback>
-            </Avatar>
-          ))}
-          {attendees.length > 4 && <span className="text-xs text-slate-500 ml-1">+{attendees.length - 4}</span>}
-          {attendees.length === 0 && <span className="text-xs text-slate-400 flex items-center gap-1"><Users className="h-3 w-3" /> just you</span>}
-        </div>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          disabled={participants.length === 0}
+          className="flex items-center gap-1 group disabled:cursor-default disabled:opacity-60"
+          data-testid={`meeting-toggle-participants-${m.id}`}
+          aria-expanded={expanded}
+          aria-controls={`meeting-participants-${m.id}`}
+          title={participants.length > 0 ? (expanded ? "Hide participants" : "Show participants") : "No participants"}
+        >
+          <div className="flex items-center gap-1">
+            {attendees.slice(0, 4).map((a) => (
+              <Avatar key={a.id} className="h-6 w-6 ring-2 ring-white -ml-1.5">
+                <AvatarImage src={a.avatar_url} />
+                <AvatarFallback className="text-[10px] bg-slate-100">{a.name.split(" ").map(p => p[0]).slice(0, 2).join("")}</AvatarFallback>
+              </Avatar>
+            ))}
+            {attendees.length > 4 && <span className="text-xs text-slate-500 ml-1">+{attendees.length - 4}</span>}
+            {attendees.length === 0 && <span className="text-xs text-slate-400 flex items-center gap-1"><Users className="h-3 w-3" /> just you</span>}
+          </div>
+          {participants.length > 0 && (
+            <ChevronDown
+              className={`h-3.5 w-3.5 text-slate-400 transition-transform group-hover:text-slate-600 ${expanded ? "rotate-180" : ""}`}
+              strokeWidth={1.5}
+            />
+          )}
+        </button>
       </div>
+
+      {expanded && participants.length > 0 && (
+        <div
+          id={`meeting-participants-${m.id}`}
+          className="mt-3 border-t border-slate-100 pt-3 space-y-2 animate-fade-up"
+          data-testid={`meeting-participants-${m.id}`}
+        >
+          <div className="text-[10px] uppercase tracking-widest font-semibold text-slate-400 flex items-center gap-1.5">
+            <Users className="h-3 w-3" /> Participants ({participants.length})
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            {participants.map((p) => {
+              const isOrganizer = p.user_id === m.organizer_user_id;
+              return (
+                <div key={p.id} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-slate-50">
+                  <Avatar className="h-7 w-7 shrink-0">
+                    <AvatarImage src={p.avatar_url} />
+                    <AvatarFallback className="text-[10px] bg-slate-100">{p.name.split(" ").map(x => x[0]).slice(0, 2).join("")}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-slate-900 truncate">{p.name}</div>
+                    {p.designation && <div className="text-[11px] text-slate-500 truncate">{p.designation}</div>}
+                  </div>
+                  {isOrganizer && (
+                    <Badge variant="outline" className="rounded-full font-medium text-[10px] bg-blue-50 text-blue-700 border-blue-200 shrink-0">
+                      Organizer
+                    </Badge>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
