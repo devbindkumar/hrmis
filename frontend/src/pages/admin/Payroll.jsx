@@ -408,24 +408,90 @@ function PayslipTable({ payslips, onFinalize, onMarkPaid, onView, canApprove }) 
 
 function EditStructureDialog({ row, onSaved }) {
   const s = row.structure || {};
+  // Reverse-engineer CTC from the persisted monthly components when the
+  // dialog opens so the user can tweak percentages against a known annual
+  // number. If no structure exists, start with sensible defaults.
+  const initialMonthly = {
+    basic:   Number(s.base_salary || 0),
+    hra:     Number(s.allowances?.hra || 0),
+    special: Number(s.allowances?.special || 0),
+    other:   Number(s.allowances?.transport || 0),
+  };
+  const initialGrossMonthly =
+    initialMonthly.basic + initialMonthly.hra + initialMonthly.special + initialMonthly.other;
+  const initialCtc = initialGrossMonthly * 12;
+
+  // Percentage split — either derived from existing amounts or the defaults
+  // the user requested (50 / 25 / 15 / 10).
+  const derivePct = (amount) =>
+    initialGrossMonthly > 0
+      ? +((amount / initialGrossMonthly) * 100).toFixed(2)
+      : null;
+
+  const [ctc, setCtc] = useState(initialCtc || 1200000);
+  const [pct, setPct] = useState({
+    basic:   derivePct(initialMonthly.basic)   ?? 50,
+    hra:     derivePct(initialMonthly.hra)     ?? 25,
+    special: derivePct(initialMonthly.special) ?? 15,
+    other:   derivePct(initialMonthly.other)   ?? 10,
+  });
   const [form, setForm] = useState({
-    base_salary: s.base_salary || 0,
-    hra: s.allowances?.hra || 0,
-    transport: s.allowances?.transport || 0,
-    special: s.allowances?.special || 0,
     pf_pct: s.pf_pct ?? 6,
     tax_pct: s.tax_pct ?? 10,
     currency: s.currency || "USD",
   });
   const [busy, setBusy] = useState(false);
 
+  const ctcNum = Number(ctc) || 0;
+  const grossMonthly = ctcNum / 12;
+  const round2 = (n) => Math.round(n * 100) / 100;
+
+  // Every component's yearly / monthly amount is derived directly from the
+  // CTC × its percentage — the percentage is the source of truth.
+  const yearly = {
+    basic:   round2(ctcNum * pct.basic   / 100),
+    hra:     round2(ctcNum * pct.hra     / 100),
+    special: round2(ctcNum * pct.special / 100),
+    other:   round2(ctcNum * pct.other   / 100),
+  };
+  const monthly = {
+    basic:   round2(yearly.basic / 12),
+    hra:     round2(yearly.hra / 12),
+    special: round2(yearly.special / 12),
+    other:   round2(yearly.other / 12),
+  };
+
+  const totalPct = round2(pct.basic + pct.hra + pct.special + pct.other);
+  const totalMonthly = monthly.basic + monthly.hra + monthly.special + monthly.other;
+  const totalYearly  = yearly.basic + yearly.hra + yearly.special + yearly.other;
+
+  const pf = round2(monthly.basic * Number(form.pf_pct) / 100);
+  const tax = round2((totalMonthly - pf) * Number(form.tax_pct) / 100);
+  const net = round2(totalMonthly - pf - tax);
+
+  const rows = [
+    { key: "basic",   label: "Basic salary",      testid: "basic",   suggested: 50 },
+    { key: "hra",     label: "HRA",               testid: "hra",     suggested: 25 },
+    { key: "special", label: "Special allowance", testid: "special", suggested: 15 },
+    { key: "other",   label: "Other allowance",   testid: "other",   suggested: 10 },
+  ];
+
   const submit = async () => {
     setBusy(true);
     try {
       await api.put(`/payroll/structures/${row.user_id}`, {
         user_id: row.user_id,
-        base_salary: Number(form.base_salary),
-        allowances: { hra: Number(form.hra), transport: Number(form.transport), special: Number(form.special) },
+        // Persist monthly amounts against the existing schema:
+        //   Basic   -> base_salary
+        //   HRA     -> allowances.hra
+        //   Special -> allowances.special
+        //   Other   -> allowances.transport  (legacy field, reused)
+        base_salary: monthly.basic,
+        allowances: {
+          hra:       monthly.hra,
+          transport: monthly.other,
+          special:   monthly.special,
+        },
         pf_pct: Number(form.pf_pct),
         tax_pct: Number(form.tax_pct),
         currency: form.currency,
@@ -436,28 +502,31 @@ function EditStructureDialog({ row, onSaved }) {
     finally { setBusy(false); }
   };
 
-  // live preview
-  const gross = Number(form.base_salary) + Number(form.hra) + Number(form.transport) + Number(form.special);
-  const pf = Number(form.base_salary) * Number(form.pf_pct) / 100;
-  const tax = (gross - pf) * Number(form.tax_pct) / 100;
-  const net = gross - pf - tax;
-
   return (
-    <DialogContent className="rounded-2xl max-w-2xl" data-testid="edit-structure-dialog">
+    <DialogContent className="rounded-2xl max-w-3xl" data-testid="edit-structure-dialog">
       <DialogHeader>
         <DialogTitle className="font-display">Salary · {row.name}</DialogTitle>
       </DialogHeader>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="col-span-2 grid grid-cols-3 gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
-          <PreviewStat label="Gross" value={fmtMoney(gross, form.currency)} />
-          <PreviewStat label="Deductions" value={`−${fmtMoney(pf + tax, form.currency)}`} />
-          <PreviewStat label="Net" value={fmtMoney(net, form.currency)} bold />
+
+      {/* CTC + currency */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="sm:col-span-2">
+          <Label>CTC (annual)</Label>
+          <Input
+            type="number"
+            value={ctc}
+            onChange={(e) => setCtc(e.target.value)}
+            className="mt-1.5 font-mono"
+            data-testid="es-ctc"
+          />
+          <div className="text-[11px] text-slate-500 mt-1">
+            Monthly gross ≈ <span className="font-mono">{fmtMoney(grossMonthly, form.currency)}</span>
+          </div>
         </div>
-        <div><Label>Base salary (monthly)</Label><Input type="number" value={form.base_salary} onChange={(e)=>setForm({...form, base_salary: e.target.value})} className="mt-1.5" data-testid="es-base" /></div>
         <div>
           <Label>Currency</Label>
           <Select value={form.currency} onValueChange={(v)=>setForm({...form, currency: v})}>
-            <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="mt-1.5" data-testid="es-currency"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="USD">USD</SelectItem>
               <SelectItem value="EUR">EUR</SelectItem>
@@ -467,13 +536,98 @@ function EditStructureDialog({ row, onSaved }) {
             </SelectContent>
           </Select>
         </div>
-        <div><Label>HRA</Label><Input type="number" value={form.hra} onChange={(e)=>setForm({...form, hra: e.target.value})} className="mt-1.5" /></div>
-        <div><Label>Transport</Label><Input type="number" value={form.transport} onChange={(e)=>setForm({...form, transport: e.target.value})} className="mt-1.5" /></div>
-        <div><Label>Special allowance</Label><Input type="number" value={form.special} onChange={(e)=>setForm({...form, special: e.target.value})} className="mt-1.5" /></div>
-        <div></div>
-        <div><Label>PF / pension %</Label><Input type="number" step="0.5" value={form.pf_pct} onChange={(e)=>setForm({...form, pf_pct: e.target.value})} className="mt-1.5" /></div>
-        <div><Label>Tax %</Label><Input type="number" step="0.5" value={form.tax_pct} onChange={(e)=>setForm({...form, tax_pct: e.target.value})} className="mt-1.5" /></div>
       </div>
+
+      {/* Component grid */}
+      <div className="mt-2 rounded-xl border border-slate-200 overflow-hidden" data-testid="es-components-grid">
+        <div className="grid grid-cols-[1.4fr_0.9fr_1fr_1fr] bg-slate-50 text-[10px] uppercase tracking-widest font-semibold text-slate-500 px-4 py-2">
+          <div>Component</div>
+          <div className="text-right pr-2">Percentage</div>
+          <div className="text-right pr-2">Monthly</div>
+          <div className="text-right">Yearly</div>
+        </div>
+        {rows.map((r) => (
+          <div
+            key={r.key}
+            className="grid grid-cols-[1.4fr_0.9fr_1fr_1fr] items-center px-4 py-2.5 border-t border-slate-100"
+            data-testid={`es-row-${r.testid}`}
+          >
+            <div className="text-sm text-slate-900">
+              {r.label}
+              <div className="text-[10px] text-slate-400">Default {r.suggested}%</div>
+            </div>
+            <div className="flex items-center justify-end gap-1 pr-2">
+              <Input
+                type="number"
+                step="0.5"
+                value={pct[r.key]}
+                onChange={(e) =>
+                  setPct((p) => ({ ...p, [r.key]: Math.max(0, Number(e.target.value) || 0) }))
+                }
+                className="h-9 w-20 text-right font-mono"
+                data-testid={`es-pct-${r.testid}`}
+              />
+              <span className="text-slate-500 text-sm">%</span>
+            </div>
+            <div className="text-sm text-slate-700 text-right font-mono pr-2" data-testid={`es-monthly-${r.testid}`}>
+              {fmtMoney(monthly[r.key], form.currency)}
+            </div>
+            <div className="text-sm text-slate-700 text-right font-mono" data-testid={`es-yearly-${r.testid}`}>
+              {fmtMoney(yearly[r.key], form.currency)}
+            </div>
+          </div>
+        ))}
+        <div
+          className={`grid grid-cols-[1.4fr_0.9fr_1fr_1fr] items-center px-4 py-2.5 border-t text-sm ${
+            totalPct === 100
+              ? "bg-emerald-50/60 border-emerald-100 text-emerald-800"
+              : "bg-amber-50/60 border-amber-100 text-amber-800"
+          }`}
+          data-testid="es-total-row"
+        >
+          <div className="font-medium">Total</div>
+          <div className="text-right pr-2 font-mono" data-testid="es-total-pct">{totalPct}%</div>
+          <div className="text-right pr-2 font-mono" data-testid="es-total-monthly">{fmtMoney(totalMonthly, form.currency)}</div>
+          <div className="text-right font-mono" data-testid="es-total-yearly">{fmtMoney(totalYearly, form.currency)}</div>
+        </div>
+      </div>
+      {totalPct !== 100 && (
+        <div className="text-[11px] text-amber-700" data-testid="es-total-warning">
+          Percentages currently add up to {totalPct}%. They should total 100% of the CTC.
+        </div>
+      )}
+
+      {/* Deductions preview */}
+      <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div>
+          <Label>PF / pension %</Label>
+          <Input
+            type="number"
+            step="0.5"
+            value={form.pf_pct}
+            onChange={(e)=>setForm({...form, pf_pct: e.target.value})}
+            className="mt-1.5"
+            data-testid="es-pf"
+          />
+        </div>
+        <div>
+          <Label>Tax %</Label>
+          <Input
+            type="number"
+            step="0.5"
+            value={form.tax_pct}
+            onChange={(e)=>setForm({...form, tax_pct: e.target.value})}
+            className="mt-1.5"
+            data-testid="es-tax"
+          />
+        </div>
+        <div className="rounded-xl border border-slate-200 p-3 grid grid-cols-3 gap-2 items-center">
+          <PreviewStat label="Gross / mo" value={fmtMoney(totalMonthly, form.currency)} />
+          <PreviewStat label="Deductions" value={`−${fmtMoney(pf + tax, form.currency)}`} />
+          <PreviewStat label="Net / mo" value={fmtMoney(net, form.currency)} bold />
+        </div>
+      </div>
+
       <DialogFooter>
         <Button onClick={submit} disabled={busy} className="bg-slate-900 hover:bg-slate-800 text-white" data-testid="es-save">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}

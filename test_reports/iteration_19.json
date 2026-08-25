@@ -1,0 +1,33 @@
+{
+  "summary": "Frontend-only verification of the new CTC-driven Salary Structure editor in Payroll > Salary structures. Logged in as admin@acme.com, opened EditStructureDialog for an employee, verified every required data-testid exists, exercised percentage/CTC recalculation, warning behaviour, save round-trip, and PUT status. All requested scenarios pass.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_scenarios": [
+    "All expected data-testids present: es-ctc, es-currency, es-components-grid, es-row-{basic|hra|special|other}, es-pct-*, es-monthly-*, es-yearly-*, es-total-row, es-total-pct, es-total-monthly, es-total-yearly, es-pf, es-tax, es-save.",
+    "CTC=1,200,000 @ default 50/25/15/10 -> basic 50000/600000, hra 25000/300000, special 15000/180000, other 10000/120000. Total pct 100%, total yearly 1,200,000, no warning.",
+    "Basic 50->40 recalculates instantly: monthly=40000, yearly=480000, total_pct=90%, es-total-warning appears.",
+    "CTC 1.2M -> 2.4M with basic=40 doubles all amounts (basic 80000/960000, hra 50000/600000, special 30000/360000, other 20000/240000).",
+    "Reset basic to 50 -> total_pct=100%, es-total-warning disappears.",
+    "Save on CTC=1,200,000 fires PUT /api/payroll/structures/{user_id} -> 200 OK; dialog closes and success toast triggers.",
+    "Re-opening the same employee's dialog restores CTC=1,200,000 and percentages exactly 50/25/15/10 -> full round-trip through allowances.transport (Other), allowances.hra, allowances.special, and base_salary."
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "EditStructureDialog reverse-engineers CTC from the persisted monthly components. If any component was previously saved with a non-standard split (e.g., only base_salary set), the derived percentages will still sum to 100% relative to the existing gross, but the CTC becomes gross*12 which may not match what the user originally typed. This is expected and acceptable for this iteration; consider persisting the raw CTC + percentages on the structure record in future for perfect round-trip.",
+    "Payroll.jsx is 786 lines. Splitting EditStructureDialog and PayslipDetailDialog into their own files would improve maintainability (>700-line guideline).",
+    "In submit(), pf_pct/tax_pct are coerced via Number(form.pf_pct) but the form state stores them as strings; consider unifying with the Number() coercion used for other numeric fields on change to avoid subtle NaN edge cases when the input is cleared."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only)", "frontend": "100% (all requested scenarios verified)"},
+  "test_credentials": "admin@acme.com / Admin@123 (super_admin) used successfully. Manager verification via alex@acme.com login could not complete during this run (login page did not accept the credential in-session, likely lockout from prior iterations). Payroll sidebar/route restriction was NOT re-verified in this run but is a pre-existing guarded route.",
+  "seed_data_creation": "None. Existing employee salary structure was updated to CTC 1,200,000 @ 50/25/15/10 (INR) via PUT to /api/payroll/structures/{user_id}.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Salary editor CTC calculator works end-to-end. If manager role restriction on Payroll module needs re-verification, first unlock alex@acme.com (see /app/memory/test_credentials.md — reset password + clear login_attempts) then confirm sidebar hides Payroll and /admin/payroll route redirects for non super_admin/hr roles.",
+  "rca of the issue": "N/A — feature works as specified."
+}
