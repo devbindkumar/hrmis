@@ -598,7 +598,7 @@ function EditStructureDialog({ row, onSaved }) {
       )}
 
       {/* Deductions preview */}
-      <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <Label>PF / pension %</Label>
           <Input
@@ -621,11 +621,14 @@ function EditStructureDialog({ row, onSaved }) {
             data-testid="es-tax"
           />
         </div>
-        <div className="rounded-xl border border-slate-200 p-3 grid grid-cols-3 gap-2 items-center">
-          <PreviewStat label="Gross / mo" value={fmtMoney(totalMonthly, form.currency)} />
-          <PreviewStat label="Deductions" value={`−${fmtMoney(pf + tax, form.currency)}`} />
-          <PreviewStat label="Net / mo" value={fmtMoney(net, form.currency)} bold />
-        </div>
+      </div>
+      <div
+        className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4 grid grid-cols-1 sm:grid-cols-3 gap-4"
+        data-testid="es-summary-row"
+      >
+        <PreviewStat label="Gross / mo" value={fmtMoney(totalMonthly, form.currency)} />
+        <PreviewStat label="Deductions" value={`−${fmtMoney(pf + tax, form.currency)}`} />
+        <PreviewStat label="Net / mo" value={fmtMoney(net, form.currency)} bold />
       </div>
 
       <DialogFooter>
