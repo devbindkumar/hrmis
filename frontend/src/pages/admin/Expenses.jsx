@@ -25,7 +25,8 @@ export default function AdminExpenses() {
   const [items, setItems] = useState([]);
   const [status, setStatus] = useState("pending");
   const [summary, setSummary] = useState(null);
-  const [scope, setScope] = useState("all"); // all | team | mine
+  // Managers default to their team view. Super_admin/HR keep the org-wide "all" scope.
+  const [scope, setScope] = useState(user?.role === "manager" ? "team" : "all"); // all | team | mine
   const [decision, setDecision] = useState(null); // { id, action, name, category, amount, currency }
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -109,7 +110,9 @@ export default function AdminExpenses() {
               {user?.role === "manager" && (
                 <TabsTrigger value="team" data-testid="scope-team">My team</TabsTrigger>
               )}
-              <TabsTrigger value="all" data-testid="scope-all">All claims</TabsTrigger>
+              {user?.role !== "manager" && (
+                <TabsTrigger value="all" data-testid="scope-all">All claims</TabsTrigger>
+              )}
               <TabsTrigger value="mine" data-testid="scope-mine">My claims</TabsTrigger>
             </TabsList>
           </Tabs>

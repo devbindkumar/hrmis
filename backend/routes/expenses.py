@@ -133,13 +133,17 @@ async def my_claims(
 async def all_claims(
     user: dict = Depends(require_roles("super_admin", "hr", "manager")),
     status: Optional[str] = None,
-    scope: Optional[str] = None,  # "team" for manager's direct reports only
+    scope: Optional[str] = None,  # kept for compatibility — managers are always scoped to their team
 ):
     db = get_db()
     q: dict = {"company_id": company_id_of(user)}
     if status and status != "all":
         q["status"] = status
-    if scope == "team":
+    # Privacy rule: a manager may only see claims filed by their own direct
+    # reports — never the whole company. Super_admin & HR still see everything.
+    if user.get("role") == "manager":
+        q["manager_user_id"] = user["id"]
+    elif scope == "team":
         q["manager_user_id"] = user["id"]
     items = await db.expense_claims.find(q, {"_id": 0}).sort("created_at", -1).to_list(1000)
     return items
@@ -147,11 +151,18 @@ async def all_claims(
 
 @router.get("/summary")
 async def summary(user: dict = Depends(require_roles("super_admin", "hr", "manager"))):
-    """Counts + totals per status for a dashboard card."""
+    """Counts + totals per status for a dashboard card.
+
+    Managers see totals for their direct reports only; super_admin / HR see
+    the whole company.
+    """
     db = get_db()
     cid = company_id_of(user)
+    match: dict = {"company_id": cid}
+    if user.get("role") == "manager":
+        match["manager_user_id"] = user["id"]
     pipeline = [
-        {"$match": {"company_id": cid}},
+        {"$match": match},
         {"$group": {
             "_id": "$status",
             "count": {"$sum": 1},
@@ -256,12 +267,28 @@ async def _load_claim(db, expense_id: str, cid: str) -> dict:
     return claim
 
 
+def _manager_can_touch(user: dict, claim: dict) -> bool:
+    """Privacy rule for managers: they may only view/approve/reject claims
+    submitted by their own direct reports or by themselves. Super_admin & HR
+    are unrestricted; employees are handled by the calling endpoint."""
+    if user.get("role") != "manager":
+        return True
+    return (
+        claim.get("manager_user_id") == user["id"]
+        or claim.get("user_id") == user["id"]
+    )
+
+
 @router.get("/{expense_id}")
 async def get_claim(expense_id: str, user: dict = Depends(get_current_user)):
     db = get_db()
     claim = await _load_claim(db, expense_id, company_id_of(user))
-    # employees can see their own; managers/hr/admin see all
-    if user.get("role") in ("super_admin", "hr", "manager"):
+    role = user.get("role")
+    if role in ("super_admin", "hr"):
+        return claim
+    if role == "manager":
+        if not _manager_can_touch(user, claim):
+            raise HTTPException(status_code=403, detail="Not allowed")
         return claim
     if claim["user_id"] != user["id"]:
         raise HTTPException(status_code=403, detail="Not allowed")
@@ -277,6 +304,8 @@ async def approve_claim(
     db = get_db()
     cid = company_id_of(admin)
     claim = await _load_claim(db, expense_id, cid)
+    if not _manager_can_touch(admin, claim):
+        raise HTTPException(status_code=403, detail="You can only approve claims from your direct reports")
     # Only super_admin can approve their own claim (or any manager/HR self-claim).
     # Managers & HR may never approve claims they submitted themselves.
     if claim["user_id"] == admin["id"] and admin.get("role") != "super_admin":
@@ -311,6 +340,8 @@ async def reject_claim(
     db = get_db()
     cid = company_id_of(admin)
     claim = await _load_claim(db, expense_id, cid)
+    if not _manager_can_touch(admin, claim):
+        raise HTTPException(status_code=403, detail="You can only reject claims from your direct reports")
     if claim["user_id"] == admin["id"] and admin.get("role") != "super_admin":
         raise HTTPException(status_code=403, detail="You cannot reject your own claim")
     if claim["status"] != "pending":
@@ -367,8 +398,13 @@ async def get_receipt(expense_id: str, user: dict = Depends(get_current_user)):
     db = get_db()
     cid = company_id_of(user)
     claim = await _load_claim(db, expense_id, cid)
-    # employees can only see own receipts
-    if user.get("role") not in ("super_admin", "hr", "manager") and claim["user_id"] != user["id"]:
+    role = user.get("role")
+    if role in ("super_admin", "hr"):
+        pass  # full access
+    elif role == "manager":
+        if not _manager_can_touch(user, claim):
+            raise HTTPException(status_code=403, detail="Not allowed")
+    elif claim["user_id"] != user["id"]:
         raise HTTPException(status_code=403, detail="Not allowed")
     if not claim.get("receipt_path"):
         raise HTTPException(status_code=404, detail="No receipt attached")

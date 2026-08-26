@@ -1,0 +1,36 @@
+{
+  "summary": "Iter21: verified manager-scope enforcement on per-claim expense endpoints (GET /{id}, GET /{id}/receipt, POST /{id}/approve, POST /{id}/reject). 15/15 pytest cases pass. Manager Alex can view/approve/reject claims from his direct report (maya) and download her receipt, but gets 403 on non-report claims (HR jordan, super_admin admin) for all four endpoints. Super_admin and HR remain unrestricted — both can GET, download receipt, approve and reject any claim in the tenant. Regression on /api/expenses/all still returns only manager_user_id==Alex rows. Duplicate raise on receipt endpoint (previous edit note) is no longer present; endpoint still returns file bytes with correct image/* content-type for authorized users.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "verified_scenarios": [
+    "Manager Alex GET /api/expenses/{maya_id} → 200",
+    "Manager Alex GET /api/expenses/{hr_id} → 403 and /{admin_id} → 403",
+    "Manager Alex GET /api/expenses/{maya_id}/receipt → 200 image bytes",
+    "Manager Alex GET /api/expenses/{hr_id}/receipt → 403 and /{admin_id}/receipt → 403",
+    "Manager Alex POST /approve on non-report → 403; on maya pending → 200 and status persists as 'approved'",
+    "Manager Alex POST /reject on non-report → 403; on second maya pending → 200 and status persists as 'rejected'",
+    "Super_admin admin@acme.com and HR jordan@acme.com GET any claim → 200 (all 4 seeded ids)",
+    "Super_admin and HR GET any receipt → 200 with content",
+    "Super_admin admin approve+reject an HR-authored fresh claim → 200",
+    "HR jordan approves a maya-authored claim → 200 (non-authored, unrestricted)",
+    "Regression: manager /api/expenses/all rows all have manager_user_id==Alex.id; hr and admin seeded claim ids not present"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iter21_expenses_privacy_by_id.py",
+    "/app/test_reports/pytest/iter21_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "_manager_can_touch is applied consistently on GET/{id}, GET/{id}/receipt, /approve and /reject — clean, single-source privacy rule.",
+    "Self-claim rule (`claim.user_id == admin.id` blocks approve/reject unless super_admin) is preserved and orthogonal to the manager-scope rule. Good.",
+    "mark-paid is restricted to super_admin/hr and does not need _manager_can_touch — correct.",
+    "Consider also emitting the same 403 detail message shape everywhere (currently: 'Not allowed' for GET vs 'You can only approve/reject claims from your direct reports' for actions) — minor UX polish, not a bug."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter21_expenses_privacy_by_id.py (new)"],
+  "success_rate": {"backend": "100%", "frontend": "n/a"},
+  "test_credentials": "admin@acme.com/Admin@123 (super_admin), jordan@acme.com/Demo@123 (HR), alex@acme.com/Demo@123 (manager), maya@acme.com/Demo@123 (report to Alex). All seeded creds worked on first attempt — no reset needed this iteration.",
+  "seed_data_creation": "6 TEST_iter21_* claims created via POST /api/expenses (2× maya with receipts, 1× hr with receipt, 1× admin with receipt, 2× hr fresh, 1× maya fresh) — all deleted via admin at module teardown / per-test finally blocks.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter21 confirms manager scope on all per-claim expense endpoints. Reusable helpers in test_iter21_expenses_privacy_by_id.py (_login, _h, _create with optional receipt via inline PNG_B64). Fixture seeds and cleans TEST_iter21_* claims. Combined with iter20 (list/summary scope) the manager privacy story is now fully covered."
+}

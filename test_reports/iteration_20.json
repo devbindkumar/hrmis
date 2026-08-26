@@ -1,0 +1,35 @@
+{
+  "summary": "Verified privacy fix for /api/expenses/all and /api/expenses/summary. Backend: 7/7 pytest cases pass — manager (alex@acme.com) only sees claims where manager_user_id == his id (both /all and /all?scope=team return identical lists; summary counts equal /all length); non-direct-report claims (HR jordan, super_admin admin) never leak to manager. Super_admin & HR still receive org-wide list including seeded outsider claims (strictly greater than manager's list). Frontend: on /admin/expenses, manager Alex sees ONLY scope-team + scope-mine tabs, no scope-all; default active tab is scope-team. Super_admin admin@acme.com and HR jordan@acme.com show scope-all + scope-mine (no scope-team), default active tab scope-all.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "verified_scenarios": [
+    "Manager Alex GET /api/expenses/all: every row.manager_user_id == Alex.id; contains maya+diego seeded claims; excludes HR/admin seeded claims.",
+    "Manager Alex GET /api/expenses/all == GET /api/expenses/all?scope=team (identical id sets).",
+    "Manager Alex GET /api/expenses/summary total count == len(/api/expenses/all).",
+    "Super_admin admin@acme.com /api/expenses/all length strictly > manager's length and contains all 4 seeded claims.",
+    "Super_admin summary total count > manager summary total count.",
+    "HR jordan@acme.com /api/expenses/all contains admin-authored + non-report claims (org-wide preserved).",
+    "Frontend manager Alex on /admin/expenses: scope-team + scope-mine present, scope-all ABSENT, default active = scope-team.",
+    "Frontend super_admin: scope-all + scope-mine present, scope-team ABSENT.",
+    "Frontend HR jordan: scope-all + scope-mine present, scope-team ABSENT."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iter20_expenses_privacy.py",
+    "/app/test_reports/pytest/iter20_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "expenses.py /all: privacy rule cleanly enforces manager_user_id==user.id regardless of scope query param — good. Consider ignoring status=='paid' vs approved separation cleanly (already ok).",
+    "get_receipt endpoint (line 382) grants any manager visibility to any receipt in the tenant — after this privacy fix it is now inconsistent: a manager can still GET /api/expenses/{id}/receipt for a claim outside their team. Recommend applying the same manager_user_id==user.id gate on /expenses/{id} and /expenses/{id}/receipt for role==manager. Not part of this scope but flagging.",
+    "Approve/Reject endpoints also do not restrict a manager to only their direct reports' claims — a manager could POST /api/expenses/{someone_else_id}/approve. Same recommendation."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter20_expenses_privacy.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "alex@acme.com/Demo@123 (manager), maya@acme.com/Demo@123, diego@acme.com/Demo@123, jordan@acme.com/Demo@123 (HR), admin@acme.com/Admin@123 (super_admin). Reset alex/maya/diego/jordan bcrypt hash to Demo@123 and cleared db.login_attempts before running tests.",
+  "seed_data_creation": "4 TEST_privacy claims created via POST /api/expenses (Maya, Diego, HR Jordan, admin) and deleted at test module teardown as admin.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter20 confirms privacy scope for /api/expenses/all and /summary. Note the analogous endpoints /api/expenses/{id}, /api/expenses/{id}/receipt, /approve, /reject still let a manager operate on ANY claim in the tenant — flagged as code-review comments for main agent. Fixture creates and cleans up TEST_privacy_* claims automatically."
+}
