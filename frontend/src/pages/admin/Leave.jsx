@@ -4,12 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import StatusPill from "@/components/StatusPill";
 import { toast } from "sonner";
-import { Check, X, Loader2 } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Check, X, Loader2, Plus } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
+import { ApplyDialog as LeaveApplyDialog } from "@/pages/employee/MyLeave";
 
 export default function AdminLeave() {
   const { user } = useAuth();
@@ -21,6 +22,8 @@ export default function AdminLeave() {
   const [decisionFor, setDecisionFor] = useState(null);
   const [note, setNote] = useState("");
   const [action, setAction] = useState("approve");
+  const [applyOpen, setApplyOpen] = useState(false);
+  const [balances, setBalances] = useState([]);
 
   const load = async () => {
     setLoading(true);
@@ -29,7 +32,15 @@ export default function AdminLeave() {
     setLoading(false);
   };
 
+  const loadBalances = async () => {
+    try {
+      const { data } = await api.get("/leave/balances");
+      setBalances(data || []);
+    } catch { /* ignore */ }
+  };
+
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [tab, teamOnly]);
+  useEffect(() => { loadBalances(); }, []);
 
   const decide = async () => {
     try {
@@ -50,17 +61,33 @@ export default function AdminLeave() {
           <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-900">Leave management</h1>
           <p className="text-sm text-slate-500 mt-1">Approve, reject, and track leave requests across teams.</p>
         </div>
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white">
-          <Switch
-            checked={teamOnly}
-            onCheckedChange={setTeamOnly}
-            disabled={isManagerOnly}
-            id="team-only-leave"
-            data-testid="leave-team-toggle"
-          />
-          <Label htmlFor="team-only-leave" className="text-sm font-medium text-slate-700 cursor-pointer">
-            My team only
-          </Label>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white">
+            <Switch
+              checked={teamOnly}
+              onCheckedChange={setTeamOnly}
+              disabled={isManagerOnly}
+              id="team-only-leave"
+              data-testid="leave-team-toggle"
+            />
+            <Label htmlFor="team-only-leave" className="text-sm font-medium text-slate-700 cursor-pointer">
+              My team only
+            </Label>
+          </div>
+          <Dialog open={applyOpen} onOpenChange={setApplyOpen}>
+            <DialogTrigger asChild>
+              <Button
+                className="bg-slate-900 hover:bg-slate-800 text-white rounded-lg"
+                data-testid="admin-apply-leave-btn"
+              >
+                <Plus className="h-4 w-4 mr-1.5" /> Apply for leave
+              </Button>
+            </DialogTrigger>
+            <LeaveApplyDialog
+              balances={balances}
+              onCreated={() => { setApplyOpen(false); loadBalances(); load(); }}
+            />
+          </Dialog>
         </div>
       </div>
 

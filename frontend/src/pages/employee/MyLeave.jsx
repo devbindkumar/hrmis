@@ -93,7 +93,7 @@ export default function MyLeave() {
   );
 }
 
-function ApplyDialog({ balances, onCreated }) {
+export function ApplyDialog({ balances, onCreated }) {
   const [form, setForm] = useState({ leave_type: balances[0]?.leave_type || "Casual", start_date: "", end_date: "", reason: "" });
   const [busy, setBusy] = useState(false);
   const submit = async () => {

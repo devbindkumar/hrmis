@@ -1,0 +1,31 @@
+{
+  "summary": "Tested admin apply-for-leave and apply-for-WFH flows for super_admin, HR and manager plus non-regression for employee. Backend: 11/11 pytest passed. Frontend: buttons visible, dialogs open, submissions succeed with toast, POSTs return 200; rows visible immediately for HR and super_admin. Manager (Alex) submissions succeed and persist in DB but the newly-filed row is not visible in /admin/leave and /admin/wfh under 'My team only' scope because the manager toggle is disabled (locked ON) and the team-scoped list does not include the manager's own self-applied requests. Request statement explicitly accepts this behavior.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Manager self-applied leave/WFH visibility in /admin/*", "issue": "Manager's own newly-filed leave/WFH row does not appear in the admin list because the 'My team only' switch is disabled (locked ON for managers) and the team-scoped query excludes the manager's own requests. Row does persist (verified via /leave/mine and /wfh/mine). Consider either (a) including the current manager's own requests in the team scope, or (b) allowing managers to toggle team-only off, or (c) adding a 'My requests' scope.", "affected_selectors": ["leave-team-toggle", "wfh-team-toggle"]}
+    ],
+    "design_issues": [
+      {"screen": "Apply dialogs (leave & WFH)", "issues": ["Dialogs use the browser's default HTML date picker (input type=date) rather than the shadcn Calendar component — pre-existing on the employee dialogs which are now reused in admin, so consistency is maintained but recommend replacing with shadcn Calendar for polish.", "Accessibility warning: 'Missing Description or aria-describedby' for DialogContent on all apply dialogs — add DialogDescription."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_admin_apply.py", "/app/test_reports/pytest/iter22_admin_apply.xml"],
+  "action_items": [
+    "OPTIONAL UX: Fix manager visibility of their own self-filed leave/WFH in /admin/leave and /admin/wfh (currently invisible under team-only scope which manager cannot disable).",
+    "OPTIONAL a11y: Add DialogDescription (or aria-describedby) to ApplyDialog components in MyLeave.jsx and MyWFH.jsx to remove Radix a11y warning."
+  ],
+  "critical_code_review_comments": [
+    "AdminLeave.jsx uses `import { ApplyDialog as LeaveApplyDialog } from '@/pages/employee/MyLeave'` — good re-use, keeps employee UX untouched.",
+    "AdminWFH.jsx doesn't re-fetch balances (WFH has none needed) — fine. Both pages correctly refresh list after onCreated.",
+    "Manager toggle for team-only is disabled without a fallback path to view own self-applied items — logical hole introduced by this feature. Recommend surfacing self items in team scope for managers/HR/admin.",
+    "Both ApplyDialog components use native <input type='date'> instead of shadcn Calendar — a stylistic inconsistency across the app."
+  ],
+  "updated_files": ["/app/backend/tests/test_admin_apply.py"],
+  "success_rate": {"backend": "100%", "frontend": "100% for happy paths; manager visibility caveat noted as UX gap not functional failure"},
+  "test_credentials": "See /app/memory/test_credentials.md — had to reset Demo@123 hashes for all non-admin users and clear db.login_attempts to unblock login lockouts (as noted by main agent).",
+  "seed_data_creation": "Reset password_hash for jordan/alex/priya/marcus/maya/diego/lena/omar/riya/tom to 'Demo@123' and cleared db.login_attempts.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Login lockouts recur — always clear db.login_attempts and re-hash Demo@123 for the demo users before running tests. Backend test file at /app/backend/tests/test_admin_apply.py is reusable and requires REACT_APP_BACKEND_URL env. Manager's own self-applied leave/WFH does not appear in admin table under team scope; verify via /leave/mine or /wfh/mine or ask main agent to expand scope logic."
+}

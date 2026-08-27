@@ -57,7 +57,13 @@ async def all_requests(
     if status and status != "all":
         q["status"] = status
     if scope == "team":
-        q["manager_user_id"] = user["id"]
+        # Include the manager/HR/admin's own self-filed requests alongside
+        # their team's — otherwise a manager can't see the leave they just
+        # applied for (their team-only toggle is locked ON).
+        q["$or"] = [
+            {"manager_user_id": user["id"]},
+            {"user_id": user["id"]},
+        ]
     items = await db.leave_requests.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
     return items
 

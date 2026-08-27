@@ -80,7 +80,7 @@ export default function MyWFH() {
   );
 }
 
-function ApplyDialog({ onCreated }) {
+export function ApplyDialog({ onCreated }) {
   const [form, setForm] = useState({ date: "", reason: "" });
   const [busy, setBusy] = useState(false);
   const submit = async () => {

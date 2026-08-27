@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 23 verified the fix for manager self-visibility in /admin/leave and /admin/wfh under team-only scope. Backend routes now use $or:[{manager_user_id:me},{user_id:me}] for scope='team'. New pytest suite (test_iter23_team_scope_self.py) covers: manager sees own leave & WFH in team scope, manager still sees direct reports, super_admin/HR with team OFF see tenant, super_admin/HR with team ON also see own. All 10 iter23 tests PASS. Regression suite (test_admin_apply.py) still passes 10/11 — the 1 failure (test_employee_wfh_apply_still_works) is stale-data collision (unique date + reason constraint) from prior runs, NOT a code regression. Frontend UI verified: manager Alex filed a new leave AND WFH from /admin/leave and /admin/wfh and the newly-created rows appeared immediately in the admin table (team-toggle locked ON) with Alex's name. Regression flows for super_admin, HR, and employee (maya) all confirmed — apply buttons visible and interactive.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/wfh/apply (test only)", "issue": "Fixed date offset in test_admin_apply.test_employee_wfh_apply_still_works (+95d) collides with previously-created WFH for maya on that same date, returning 400 'already have a WFH request for that date'. Update test to use uuid-derived offset or a randomized date. Not a product bug."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Apply dialogs (leave & WFH)", "issues": ["Radix a11y warning: 'Missing Description or aria-describedby' for DialogContent — carried over from iter22, add DialogDescription.", "Native <input type=date> still used instead of shadcn Calendar — stylistic consistency gap."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter23_team_scope_self.py",
+    "/app/backend/tests/test_admin_apply.py",
+    "/app/test_reports/pytest/iter23_results.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: Randomize the date offset in test_employee_wfh_apply_still_works so it doesn't collide with prior TEST_ WFH rows.",
+    "OPTIONAL a11y: Add DialogDescription to ApplyDialog components in MyLeave.jsx and MyWFH.jsx."
+  ],
+  "critical_code_review_comments": [
+    "leave.py and wfh.py both use q['$or']=[{manager_user_id:me},{user_id:me}] combined with the base company_id filter — implicit AND with $or is fine. However this diverges slightly from the intent 'team scope' when employed by a non-manager admin: super_admin/HR toggling team-ON now see ONLY their own requests (since no employee reports to them). That's likely acceptable, but consider naming/UX: 'My team' toggle for admins with no reports effectively becomes 'My requests only'. Confirm this is intended.",
+    "Balance validation branch in leave.apply blocks admins/HR/manager the same as employees. If HR/admin need to bypass balance for corrections, consider a role-check override — not raised in this iteration but noted.",
+    "Both apply dialogs still lack DialogDescription (Radix a11y console warnings persist)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter23_team_scope_self.py"
+  ],
+  "success_rate": {"backend": "95% (20/21; 1 stale-data test failure, not a product bug)", "frontend": "100% for all flows tested"},
+  "test_credentials": "See /app/memory/test_credentials.md. Reset Demo@123/Admin@123 hashes and cleared db.login_attempts before running.",
+  "seed_data_creation": "Cleared db.login_attempts and re-hashed passwords for admin/jordan/alex/priya/marcus/maya/diego/lena/omar/riya/tom.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter23 team-scope self-visibility is fully working end-to-end. Login lockouts recur — always clear db.login_attempts and re-hash passwords. Use /app/backend/tests/test_iter23_team_scope_self.py and test_admin_apply.py for regression. The employee_wfh_apply_still_works test uses a fixed +95d offset and will keep failing on WFH uniqueness — main agent should switch it to a randomized offset.",
+  "rca of the issue": "Original UX gap (iter22): GET /leave/all and /wfh/all with scope='team' filtered only on manager_user_id==user.id, excluding a manager's OWN self-filed requests. Fix in iter23: both endpoints now use q['$or']=[{manager_user_id:user.id},{user_id:user.id}] when scope='team', so the manager sees team + own rows. Verified in DB, API, and UI."
+}

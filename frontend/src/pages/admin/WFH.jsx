@@ -3,13 +3,14 @@ import api, { formatApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import StatusPill from "@/components/StatusPill";
-import { Check, X, Loader2, House, Users } from "lucide-react";
+import { Check, X, Loader2, House, Users, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
+import { ApplyDialog as WFHApplyDialog } from "@/pages/employee/MyWFH";
 
 export default function AdminWFH() {
   const { user } = useAuth();
@@ -22,6 +23,7 @@ export default function AdminWFH() {
   const [decisionFor, setDecisionFor] = useState(null);
   const [action, setAction] = useState("approve");
   const [note, setNote] = useState("");
+  const [applyOpen, setApplyOpen] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -47,17 +49,32 @@ export default function AdminWFH() {
           <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-900">Work from home</h1>
           <p className="text-sm text-slate-500 mt-1">Approve remote-day requests and see who's offsite.</p>
         </div>
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white">
-          <Switch
-            checked={teamOnly}
-            onCheckedChange={setTeamOnly}
-            disabled={isManagerOnly}
-            id="team-only-wfh"
-            data-testid="wfh-team-toggle"
-          />
-          <Label htmlFor="team-only-wfh" className="text-sm font-medium text-slate-700 cursor-pointer">
-            My team only
-          </Label>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white">
+            <Switch
+              checked={teamOnly}
+              onCheckedChange={setTeamOnly}
+              disabled={isManagerOnly}
+              id="team-only-wfh"
+              data-testid="wfh-team-toggle"
+            />
+            <Label htmlFor="team-only-wfh" className="text-sm font-medium text-slate-700 cursor-pointer">
+              My team only
+            </Label>
+          </div>
+          <Dialog open={applyOpen} onOpenChange={setApplyOpen}>
+            <DialogTrigger asChild>
+              <Button
+                className="bg-slate-900 hover:bg-slate-800 text-white rounded-lg"
+                data-testid="admin-apply-wfh-btn"
+              >
+                <Plus className="h-4 w-4 mr-1.5" /> Apply for WFH
+              </Button>
+            </DialogTrigger>
+            <WFHApplyDialog
+              onCreated={() => { setApplyOpen(false); load(); api.get("/wfh/today").then((r) => setToday(r.data)).catch(() => {}); }}
+            />
+          </Dialog>
         </div>
       </div>
 
