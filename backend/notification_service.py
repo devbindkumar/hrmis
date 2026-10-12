@@ -281,23 +281,12 @@ async def _notify_meeting_change(
     *,
     event_key: str,
     company_id: str,
-    organizer_name: str,
-    title: str,
     starts_at: str,
     ends_at: Optional[str],
     attendee_user_ids: List[str],
-    extra: str = "",
+    build_params,
 ) -> None:
-    """Shared sender for meeting_updated / meeting_cancelled WhatsApp pings.
-
-    Template variable order (6):
-      1. attendee_name
-      2. organizer_name
-      3. title
-      4. date_str
-      5. time_range_str
-      6. extra  (summary of what changed for updates; "" for cancellation)
-    """
+    """Shared fan-out for meeting_updated / meeting_cancelled WhatsApp pings."""
     try:
         if not await _event_enabled(company_id, event_key):
             return
@@ -315,14 +304,7 @@ async def _notify_meeting_change(
             phone = att.get("phone")
             if not phone:
                 continue
-            params = [
-                att.get("name", "there"),
-                organizer_name,
-                title,
-                date_str,
-                time_range,
-                extra or "",
-            ]
+            params = build_params(att.get("name") or "there", date_str, time_range)
             await send_template(company_id, phone, tmpl, params)
     except Exception as e:
         logger.error(f"_notify_meeting_change({event_key}) error: {e}")
@@ -338,36 +320,39 @@ async def notify_meeting_updated(
     attendee_user_ids: List[str],
     change_summary: str = "",
 ) -> None:
+    # Vars: attendee, organizer, title, date, time, changes
     await _notify_meeting_change(
         event_key="meeting_updated",
         company_id=company_id,
-        organizer_name=organizer_name,
-        title=title,
         starts_at=starts_at,
         ends_at=ends_at,
         attendee_user_ids=attendee_user_ids,
-        extra=change_summary,
+        build_params=lambda name, d, t: [
+            name, organizer_name or "Organizer", title or "Meeting", d, t,
+            (change_summary or "details updated")[:200],
+        ],
     )
 
 
 async def notify_meeting_cancelled(
     *,
     company_id: str,
-    organizer_name: str,
+    cancelled_by: str,
     title: str,
     starts_at: str,
     ends_at: Optional[str],
     attendee_user_ids: List[str],
 ) -> None:
+    # Vars: attendee, title, date, time, cancelled_by
     await _notify_meeting_change(
         event_key="meeting_cancelled",
         company_id=company_id,
-        organizer_name=organizer_name,
-        title=title,
         starts_at=starts_at,
         ends_at=ends_at,
         attendee_user_ids=attendee_user_ids,
-        extra="",
+        build_params=lambda name, d, t: [
+            name, title or "Meeting", d, t, cancelled_by or "the organizer",
+        ],
     )
 
 

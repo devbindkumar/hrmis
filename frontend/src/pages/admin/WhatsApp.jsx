@@ -66,6 +66,8 @@ const EVENT_LABELS = {
   leave_request: "Leave requests",
   wfh_request: "WFH requests",
   meeting_scheduled: "Meeting scheduled",
+  meeting_updated: "Meeting updated (sent to participants)",
+  meeting_cancelled: "Meeting cancelled / participant removed",
   checkin_checkout: "Check-in / Check-out",
 };
 
@@ -632,7 +634,7 @@ export default function WhatsAppSettings() {
                 In <b>Business Settings → System Users</b>, create a <b>System User</b>, assign your WhatsApp Business Account, and generate a <b>permanent access token</b> with the <code className="text-xs bg-slate-100 px-1 rounded">whatsapp_business_messaging</code> permission. Paste it into the Access Token field. (The temporary 24h token from API Setup also works for early testing.)
               </li>
               <li>
-                In the <b>Templates</b> tab here, click <i>Copy Body</i> for each of the five templates and create them inside Meta WhatsApp Manager → <b>Message Templates</b>. Use Category <b>UTILITY</b>, language <b>English (en_US)</b>, and name them <i>exactly</i> as shown. Submit for approval (usually approved within minutes).
+                In the <b>Templates</b> tab here, click <i>Copy Body</i> for each template and create them inside Meta WhatsApp Manager → <b>Message Templates</b>. Use Category <b>UTILITY</b>, language <b>English (en_US)</b>, and name them <i>exactly</i> as shown. Submit for approval (usually approved within minutes).
               </li>
               <li>
                 While templates are pending, add any test recipient phone numbers under <b>WhatsApp → API Setup → To</b> so they can receive messages in sandbox mode.

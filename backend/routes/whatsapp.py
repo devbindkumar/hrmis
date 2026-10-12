@@ -154,6 +154,32 @@ async def template_specs(_: dict = Depends(require_roles("super_admin"))):
                 },
             },
             {
+                "key": "meeting_updated",
+                "name": DEFAULT_TEMPLATES["meeting_updated"],
+                "body": (
+                    "Hi {{1}}, {{2}} has updated the meeting *{{3}}*. New schedule: {{4}} at {{5}}.\n"
+                    "Changes: {{6}}.\n\nLogin to HRMIS to view details."
+                ),
+                "variables": ["Attendee name", "Organizer name", "Meeting title", "Date", "Time range", "Changes"],
+                "example": {
+                    "body_text": [["Maya Chen", "Alex Carter", "Sprint Planning", "01 Jul 2026 (Wed)",
+                                   "04:00 pm → 04:30 pm IST", "start → 01 Jul 16:00"]]
+                },
+            },
+            {
+                "key": "meeting_cancelled",
+                "name": DEFAULT_TEMPLATES["meeting_cancelled"],
+                "body": (
+                    "Hi {{1}}, the meeting *{{2}}* scheduled on {{3}} at {{4}} has been cancelled by {{5}}.\n\n"
+                    "— HRMIS"
+                ),
+                "variables": ["Attendee name", "Meeting title", "Date", "Time range", "Cancelled by"],
+                "example": {
+                    "body_text": [["Maya Chen", "Sprint Planning", "01 Jul 2026 (Wed)",
+                                   "04:00 pm → 04:30 pm IST", "Alex Carter"]]
+                },
+            },
+            {
                 "key": "checkin_checkout",
                 "name": DEFAULT_TEMPLATES["checkin_checkout"],
                 "body": "Hi {{1}}, {{2}} has *{{3}}* at {{4}}.\n\n— HRMIS",
@@ -179,6 +205,12 @@ def _sample_params_for(key: str, manager_name: str) -> List[str]:
         return [manager_name, "Test Employee", "2026-02-14", "Test reason"]
     if key == "meeting_scheduled":
         return ["Test Employee", manager_name, "HRMIS Test Meeting", "2026-02-14", "10:30"]
+    if key == "meeting_updated":
+        return ["Test Employee", manager_name, "HRMIS Test Meeting", "01 Jul 2026 (Wed)",
+                "04:00 pm → 04:30 pm IST", "start → 01 Jul 16:00"]
+    if key == "meeting_cancelled":
+        return ["Test Employee", "HRMIS Test Meeting", "01 Jul 2026 (Wed)",
+                "04:00 pm → 04:30 pm IST", manager_name]
     if key == "checkin_checkout":
         return [manager_name, "Test Employee", "Checked In", "12 Feb 2026, 09:05 UTC"]
     return [manager_name, "Test Employee", "Event", "now"]

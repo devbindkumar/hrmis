@@ -478,9 +478,42 @@ async def update_meeting(
         merged.pop("_id", None)
         return merged
 
-    # Notify every active attendee — only when the meeting is confirmed
+    # Smart routing (only for confirmed meetings): added → invite,
+    # removed → cancelled, retained → updated.
     if merged.get("approval_status") in ("auto_approved", "approved"):
-        for uid in merged.get("attendee_user_ids", []):
+        before_ids = existing.get("attendee_user_ids") or []
+        after_ids = merged.get("attendee_user_ids") or []
+        added = [u for u in after_ids if u not in before_ids]
+        removed = [u for u in before_ids if u not in after_ids]
+        kept = [u for u in after_ids if u in before_ids]
+        organizer_name = merged.get("created_by_name") or user["name"]
+
+        if added:
+            await _notify_and_email(
+                db, {**merged, "attendee_user_ids": added}, {"name": organizer_name},
+            )
+
+        for uid in removed:
+            await db.notifications.insert_one({
+                "id": str(uuid.uuid4()),
+                "user_id": uid,
+                "type": "meeting_cancelled",
+                "title": "Removed from meeting",
+                "body": f"You were removed from \"{existing.get('title')}\" by {user['name']}.",
+                "read": False,
+                "created_at": _now_iso(),
+            })
+        if removed:
+            await notify_meeting_cancelled(
+                company_id=cid,
+                cancelled_by=user["name"],
+                title=existing.get("title", ""),
+                starts_at=existing.get("starts_at", ""),
+                ends_at=existing.get("ends_at"),
+                attendee_user_ids=removed,
+            )
+
+        for uid in kept:
             await db.notifications.insert_one({
                 "id": str(uuid.uuid4()),
                 "user_id": uid,
@@ -490,15 +523,16 @@ async def update_meeting(
                 "read": False,
                 "created_at": _now_iso(),
             })
-        await notify_meeting_updated(
-            company_id=cid,
-            organizer_name=merged.get("created_by_name") or user["name"],
-            title=merged.get("title", ""),
-            starts_at=merged.get("starts_at", ""),
-            ends_at=merged.get("ends_at"),
-            attendee_user_ids=merged.get("attendee_user_ids", []),
-            change_summary=change_summary,
-        )
+        if kept:
+            await notify_meeting_updated(
+                company_id=cid,
+                organizer_name=organizer_name,
+                title=merged.get("title", ""),
+                starts_at=merged.get("starts_at", ""),
+                ends_at=merged.get("ends_at"),
+                attendee_user_ids=kept,
+                change_summary=change_summary,
+            )
 
     merged.pop("_id", None)
     return merged
@@ -534,7 +568,7 @@ async def cancel_meeting(meeting_id: str, user: dict = Depends(get_current_user)
             })
         await notify_meeting_cancelled(
             company_id=meeting["company_id"],
-            organizer_name=meeting.get("created_by_name") or user["name"],
+            cancelled_by=user["name"],
             title=meeting.get("title", ""),
             starts_at=meeting.get("starts_at", ""),
             ends_at=meeting.get("ends_at"),
