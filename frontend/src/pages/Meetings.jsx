@@ -542,6 +542,9 @@ function NewMeetingDialog({ employees, rooms, prefill, initial, onCreated }) {
           room_id: form.room_id,
           starts_at: new Date(form.starts_at).toISOString(),
           ends_at: new Date(form.ends_at).toISOString(),
+          // In edit mode the meeting being edited would otherwise flag ITSELF
+          // as a conflict and lock the Save button.
+          exclude_meeting_id: initial?.id,
         });
         if (!cancelled) setConflict(data.available ? null : data.conflict);
       } catch { /* noop */ }
