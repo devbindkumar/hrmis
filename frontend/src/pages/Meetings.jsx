@@ -551,7 +551,7 @@ function NewMeetingDialog({ employees, rooms, prefill, initial, onCreated }) {
       finally { if (!cancelled) setChecking(false); }
     }, 350);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [form.room_id, form.starts_at, form.ends_at]);
+  }, [form.room_id, form.starts_at, form.ends_at, initial?.id]);
 
   const submit = async () => {
     if (!form.title) { toast.error("Add a title"); return; }

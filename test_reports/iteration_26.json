@@ -1,0 +1,35 @@
+{
+  "summary": "Iter26 verified the Edit Meeting dialog self-conflict fix. Backend: new /app/backend/tests/test_iter26_check_conflict_exclude.py (4/4 PASS) proves POST /api/rooms/check-conflict ignores the meeting whose id is passed as `exclude_meeting_id` (self-exclusion), still flags OTHER overlapping meetings, and the PATCH /api/meetings/{id} path accepts same-times + new attendee without 409. Frontend (Playwright on preview URL /admin/meetings as alex@acme.com): (STEP1) opening the edit dialog on a confirmed room-booked meeting shows Save ENABLED and NO red conflict banner; the live /rooms/check-conflict POST payload captured on the wire includes `exclude_meeting_id` set to the edited meeting's id. (STEP2) Adding Maya as invitee without touching start/end → PATCH /api/meetings/{id} 200, toast 'Meeting updated — participants notified' appears. (STEP3) Reopen edit, change only the title → PATCH fires again with 200 (Save stayed enabled). (STEP4) Non-regression: shifting start/end into another meeting's slot made the red room-conflict-banner reappear and the Save button went back to disabled. (STEP5) Non-organizer non-admin check: logged in as diego@acme.com on /employee/meetings — the edit pencil (data-testid='edit-meeting-{id}') is NOT rendered for alex's meeting. The 'add attendee in CREATE mode conflict works' non-regression is already covered by iter24's test_patch_room_conflict_409 and by the new iter26 'exclude_only_hides_the_edited_meeting_not_others' test which asserts the endpoint still flags conflicts when the excluded id does NOT match.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter26_check_conflict_exclude.py",
+    "/app/test_reports/pytest/iter26_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Meetings.jsx:534 — the useEffect that calls /rooms/check-conflict has deps [form.room_id, form.starts_at, form.ends_at] but references initial?.id inside. Since initial is captured from the component instance (new instance per dialog open), this works today, but ESLint react-hooks/exhaustive-deps would flag it. Consider adding initial?.id to deps for correctness/future-proofing.",
+    "Meetings.jsx:559 submit() has a client-side `if (conflict) return;` guard, but the server already rejects room conflicts with 409 on PATCH — good defense-in-depth, no change needed.",
+    "rooms.py:238 /check-conflict correctly excludes cancelled + rejected and applies `id: {$ne: exclude_meeting_id}` only when provided — matches the fix contract."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter26_check_conflict_exclude.py"
+  ],
+  "success_rate": {
+    "backend": "100% (4/4 iter26)",
+    "frontend": "100% (5/5 UI scenarios: enabled-on-open, add-attendee save, title-only save, real-clash disables, non-organizer no pencil)"
+  },
+  "test_credentials": "See /app/memory/test_credentials.md. Used admin@acme.com/Admin@123, alex@acme.com/Demo@123, maya/diego@acme.com/Demo@123. No lockouts.",
+  "seed_data_creation": "Playwright run seeded two confirmed meetings in room 'Canvas' (alex organizer, ~72h and ~76h in the future) prefixed TEST_ITER26_UI_*. Backend pytest seeds TEST_iter26_* meetings at random far-future hours (50-470h offsets) to avoid pollution.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Fix is confirmed end-to-end. Reuse /app/backend/tests/test_iter26_check_conflict_exclude.py and the iter24/iter25 suites as regression. The useEffect-deps nit on Meetings.jsx:534 is cosmetic (works today because initial is stable per dialog instance). Captured network payload example from the UI edit dialog: POST /api/rooms/check-conflict { room_id, starts_at, ends_at, exclude_meeting_id: <edited meeting id> } — assert this on any future regression.",
+  "rca of the issue": "Pre-fix: NewMeetingDialog's live conflict useEffect POSTed to /api/rooms/check-conflict with only {room_id, starts_at, ends_at}. In edit mode the stored meeting itself occupies that exact slot so the backend returned {available:false, conflict:<the meeting itself>}, which set `conflict` state → disabled Save button and showed red banner. The backend endpoint already supported `exclude_meeting_id`, so the fix was purely frontend: pass `exclude_meeting_id: initial?.id` from Meetings.jsx:547. Reproduction: open edit on a room-booked meeting without the fix → Save stays disabled even without any time change. Mitigation already deployed; iter26 tests lock the behavior in."
+}
