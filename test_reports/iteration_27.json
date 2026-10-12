@@ -1,0 +1,42 @@
+{
+  "summary": "Iter27 end-to-end verification of WhatsApp meeting_updated / meeting_cancelled template support and smart routing on PATCH / DELETE /api/meetings. Backend: new /app/backend/tests/test_iter27_meeting_wa_update_cancel.py — 6/6 PASS. (1) GET /api/whatsapp/templates returns both new cards with correct name + variables count (6 for updated, 5 for cancelled). (2) POST /api/whatsapp/test for template_key meeting_updated / meeting_cancelled writes whatsapp_outbox rows with exactly 6 / 5 non-empty params (real AzMarq send returns 400 'Invalid Template' — expected, template not yet live in BSP). (3) PATCH /api/meetings/{id} on confirmed meeting with time shift + attendee swap (maya kept, diego removed, lena added): retained maya → hrmis_meeting_updated with 6 non-empty params (6th references 'start'/'end'/'participants', 2nd = organizer 'Alex'); removed diego → hrmis_meeting_cancelled with 5 non-empty params (5th = editor 'Alex'); added lena → hrmis_meeting_scheduled with 5 params. DB-side in-app notifications verified (meeting_updated for maya, meeting_invite for lena, meeting_cancelled titled 'Removed from meeting' for diego). (4) DELETE /api/meetings/{id} fans out hrmis_meeting_cancelled with 5 params to every attendee with phone; title (param 2) and cancelled_by (param 5) correct. (5) Flipping events_enabled.meeting_updated / meeting_cancelled off via PUT /api/whatsapp/config suppresses both WA sends; restored to true in teardown. Frontend (Playwright on preview URL /admin/whatsapp as admin@acme.com): Events tab exposes data-testid wa-event-meeting_updated-switch and wa-event-meeting_cancelled-switch; Templates tab renders wa-tpl-card-meeting_updated and wa-tpl-card-meeting_cancelled with hrmis_meeting_updated/hrmis_meeting_cancelled bodies containing {{6}} and {{5}} respectively, both copy-name and copy-body buttons present; the 'Send test' dialog select exposes 7 options including 'Meeting updated (sent to participants)' and 'Meeting cancelled / participant removed'. Non-regression: hrmis_meeting_scheduled still fires on create and on PATCH-added attendees.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/meetings & PATCH /api/meetings/{id} & DELETE /api/meetings/{id}", "issue": "Every db.notifications.insert_one in /app/backend/routes/meetings.py (meeting_invite, meeting_updated, meeting_cancelled, meeting_approval_request, meeting_approved, meeting_rejected, 'Removed from meeting') is missing company_id. /api/notifications filters by {company_id: cid, user_id: ...} so these in-app notifications are INVISIBLE to recipients via the UI/notifications API — they only exist in the DB. The 'Removed from meeting' notif for the removed attendee is the user-visible fallback for when WA is disabled, so this effectively breaks the smart-routing UX for in-app. Fix: add `'company_id': cid` (meeting['company_id'] / existing['company_id']) to every insert in meetings.py (~lines 84, 229, 285, 312, 468, 497, 517, 561)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter27_meeting_wa_update_cancel.py",
+    "/app/test_reports/pytest/iter27_results.xml"
+  ],
+  "action_items": [
+    "Add company_id to every db.notifications.insert_one in /app/backend/routes/meetings.py — currently all meeting-related in-app notifications are filtered out by /api/notifications because they lack company_id. This is a pre-existing bug exposed/aggravated by this iteration since the whole value prop of in-app meeting_cancelled 'Removed from meeting' is a UX fallback for the WA message.",
+    "AzMarq WhatsApp account currently rejects hrmis_meeting_updated and hrmis_meeting_cancelled with 'Invalid Template' — expected until the customer submits them for approval in Meta WhatsApp Manager. Spec-side payloads (params / variables count / template name) are correct."
+  ],
+  "critical_code_review_comments": [
+    "meetings.py: every db.notifications.insert_one is missing company_id — breaks in-app visibility (see minor backend issue).",
+    "meetings.py update_meeting change-summary builder (line 436-451) correctly includes title/start/end/room/location/participants diff — forms the 6th param of hrmis_meeting_updated. If NO user-facing field changed (e.g. only description), summary falls back to 'details updated' which is still a non-empty 6th param, so template params remain valid.",
+    "notification_service._notify_meeting_change (line 280) correctly short-circuits on disabled event + empty attendee_user_ids and only sends to attendees who have a phone — matches test observation.",
+    "whatsapp.py _sample_params_for returns exactly 6/5 non-empty sample params for the two new keys — mirrors production payload shape so the Send-test outbox entry is a true dry-run.",
+    "WhatsApp.jsx EVENT_LABELS iteration order drives both Events-tab switches and Test-dialog Select options — adding both new keys there wires UI consistently."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter27_meeting_wa_update_cancel.py"
+  ],
+  "success_rate": {
+    "backend": "100% (6/6 iter27 pytest)",
+    "frontend": "100% (events switches + template cards + copy buttons + test-dialog options all present on /admin/whatsapp)"
+  },
+  "test_credentials": "See /app/memory/test_credentials.md. Used admin@acme.com/Admin@123 and alex@acme.com/Demo@123. maya/diego/lena/marcus use Demo@123.",
+  "seed_data_creation": "pytest fixtures create confirmed TEST_ITER27_* / TEST_ITER27_CANCEL_* / TEST_ITER27_OFF_* meetings far in the future (240-460h offsets) and tear them down via DELETE in fixture cleanup. All WA outbox rows prefixed by template name; AzMarq failed sends also persisted for audit.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_iter27 covers template-spec, smart routing on PATCH, cancel fan-out and events_enabled gating. Reuse as regression. Known AzMarq rejection ('Invalid Template') is expected until customer approves the two new templates in Meta. The company_id missing on meeting notifications is a pre-existing bug — if main agent fixes it, re-run iter27 and extend tests to also assert via GET /api/notifications (currently we query DB directly). Avoid asserting on real WA delivery — assert on whatsapp_outbox rows.",
+  "rca of the issue": "Not a bug fix iteration — feature addition. One secondary bug surfaced: meetings.py notifications never set company_id, so /api/notifications filters them out. Reproduction: as diego@acme.com GET /api/notifications after being removed from a meeting; the 'Removed from meeting' row exists in db.notifications but is absent from the API response. Mitigation: add 'company_id': cid (available in every meeting update path via existing/meeting['company_id']) to all 8 insert_one calls in meetings.py."
+}

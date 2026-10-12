@@ -168,3 +168,8 @@ See `/app/memory/test_credentials.md`.
 - Body params reduced from `[name, otp, expiry_minutes]` → `[otp]` (template body: "Enter {{1}} to complete your HRMS account verification. Do not disclose this code to anyone.").
 - Files touched: `backend/whatsapp_service.py`, `backend/auth.py`.
 - Verified via curl on `/api/auth/forgot-password` — outbox row shows `template=hrms_account_verification` with `params=[<6-digit-otp>]`.
+
+## 2026-06 — WhatsApp Meeting Update/Cancel Templates
+- Added `hrmis_meeting_updated` (6 vars: attendee, organizer, title, date, time, changes) and `hrmis_meeting_cancelled` (5 vars: attendee, title, date, time, cancelled_by) template specs, test-send samples, and event toggles on Admin > WhatsApp.
+- Smart routing on meeting edit: added → scheduled invite, removed → cancelled, retained → updated. Fixed empty 6th param on cancellation.
+- Tested: iteration_27 (backend 6/6, frontend 100%).
