@@ -406,6 +406,25 @@ async def update_meeting(
     if "attendee_user_ids" in patch:
         update["attendee_user_ids"] = patch["attendee_user_ids"] or []
 
+    # If the edit lengthens a short meeting past the long-threshold or flips
+    # on recurrence, HR approval must be re-earned. Only applies to meetings
+    # that were previously auto-approved — super_admin/HR edits stay confirmed
+    # because they already have approval authority.
+    final_duration = update.get("duration_minutes", existing.get("duration_minutes", 0))
+    final_recurring = update.get("is_recurring", existing.get("is_recurring", False))
+    needs_approval_now = final_duration > LONG_MEETING_THRESHOLD_MINUTES or bool(final_recurring)
+    approval_was = existing.get("approval_status")
+    reverted_to_pending = False
+    if (
+        needs_approval_now
+        and approval_was == "auto_approved"
+        and user.get("role") not in ("super_admin", "hr")
+    ):
+        update["approval_status"] = "pending"
+        update["approved_by"] = None
+        update["approved_at"] = None
+        reverted_to_pending = True
+
     # Build human-readable change summary BEFORE the update, so attendees know
     # what moved. Keep it short — one line.
     change_bits: list = []
@@ -438,6 +457,26 @@ async def update_meeting(
     update["updated_by"] = user["name"]
     await db.meetings.update_one({"id": meeting_id}, {"$set": update})
     merged = {**existing, **update}
+
+    # If the edit downgraded a confirmed meeting back to 'pending' (needs
+    # HR approval), skip the WA fan-out and instead poke HR for approval.
+    if reverted_to_pending:
+        hr_users = await db.users.find(
+            {"company_id": cid, "role": {"$in": ["super_admin", "hr"]}},
+            {"_id": 0, "id": 1},
+        ).to_list(100)
+        for hr in hr_users:
+            await db.notifications.insert_one({
+                "id": str(uuid.uuid4()),
+                "user_id": hr["id"],
+                "type": "meeting_approval_request",
+                "title": "Meeting approval needed",
+                "body": f"{user['name']} extended \"{merged.get('title')}\" past the long-meeting threshold — needs approval.",
+                "read": False,
+                "created_at": _now_iso(),
+            })
+        merged.pop("_id", None)
+        return merged
 
     # Notify every active attendee — only when the meeting is confirmed
     if merged.get("approval_status") in ("auto_approved", "approved"):
