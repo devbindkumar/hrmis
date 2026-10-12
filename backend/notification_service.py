@@ -277,6 +277,100 @@ async def notify_meeting_scheduled(
         logger.error(f"notify_meeting_scheduled error: {e}")
 
 
+async def _notify_meeting_change(
+    *,
+    event_key: str,
+    company_id: str,
+    organizer_name: str,
+    title: str,
+    starts_at: str,
+    ends_at: Optional[str],
+    attendee_user_ids: List[str],
+    extra: str = "",
+) -> None:
+    """Shared sender for meeting_updated / meeting_cancelled WhatsApp pings.
+
+    Template variable order (6):
+      1. attendee_name
+      2. organizer_name
+      3. title
+      4. date_str
+      5. time_range_str
+      6. extra  (summary of what changed for updates; "" for cancellation)
+    """
+    try:
+        if not await _event_enabled(company_id, event_key):
+            return
+        if not attendee_user_ids:
+            return
+        db = get_db()
+        attendees = await db.employees.find(
+            {"user_id": {"$in": attendee_user_ids}, "company_id": company_id},
+            {"_id": 0, "name": 1, "phone": 1, "user_id": 1},
+        ).to_list(500)
+        tmpl = await _template_name(company_id, event_key)
+        tz_name = await _tenant_tz(company_id)
+        date_str, time_range = _fmt_meeting_range(starts_at, ends_at, tz_name)
+        for att in attendees:
+            phone = att.get("phone")
+            if not phone:
+                continue
+            params = [
+                att.get("name", "there"),
+                organizer_name,
+                title,
+                date_str,
+                time_range,
+                extra or "",
+            ]
+            await send_template(company_id, phone, tmpl, params)
+    except Exception as e:
+        logger.error(f"_notify_meeting_change({event_key}) error: {e}")
+
+
+async def notify_meeting_updated(
+    *,
+    company_id: str,
+    organizer_name: str,
+    title: str,
+    starts_at: str,
+    ends_at: Optional[str],
+    attendee_user_ids: List[str],
+    change_summary: str = "",
+) -> None:
+    await _notify_meeting_change(
+        event_key="meeting_updated",
+        company_id=company_id,
+        organizer_name=organizer_name,
+        title=title,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        attendee_user_ids=attendee_user_ids,
+        extra=change_summary,
+    )
+
+
+async def notify_meeting_cancelled(
+    *,
+    company_id: str,
+    organizer_name: str,
+    title: str,
+    starts_at: str,
+    ends_at: Optional[str],
+    attendee_user_ids: List[str],
+) -> None:
+    await _notify_meeting_change(
+        event_key="meeting_cancelled",
+        company_id=company_id,
+        organizer_name=organizer_name,
+        title=title,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        attendee_user_ids=attendee_user_ids,
+        extra="",
+    )
+
+
 async def notify_status_update(
     *, company_id: str, employee_user_id: str, new_status: str,
 ) -> None:

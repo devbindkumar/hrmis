@@ -37,6 +37,7 @@ export default function Meetings() {
   const [rooms, setRooms] = useState([]);
   const [open, setOpen] = useState(false);
   const [prefill, setPrefill] = useState(null);
+  const [editing, setEditing] = useState(null);
   const [params, setParams] = useSearchParams();
 
   // Deep-link from RoomAvailability: ?new=1&room_id=...&start=ISO&end=ISO
@@ -130,10 +131,29 @@ export default function Meetings() {
               {upcoming.length === 0
                 ? <div className="surface p-8 text-center text-slate-400 text-sm md:col-span-3">No upcoming meetings.</div>
                 : upcoming.map((m) => (
-                    <MeetingCard key={m.id} m={m} canCancel={m.created_by === user?.id || canApprove} onCancel={() => remove(m.id)} employees={employees} />
+                    <MeetingCard
+                      key={m.id}
+                      m={m}
+                      canCancel={m.created_by === user?.id || canApprove}
+                      onCancel={() => remove(m.id)}
+                      onEdit={() => setEditing(m)}
+                      employees={employees}
+                    />
                   ))}
             </div>
           </section>
+
+          <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
+            {editing && (
+              <NewMeetingDialog
+                key={`edit-${editing.id}`}
+                employees={employees.filter((e) => e.user_id !== editing.created_by)}
+                rooms={rooms}
+                initial={editing}
+                onCreated={() => { setEditing(null); load(); }}
+              />
+            )}
+          </Dialog>
 
           {past.length > 0 && (
             <section>
@@ -220,7 +240,7 @@ function MeetingDescription({ text }) {
   );
 }
 
-function MeetingCard({ m, canCancel, onCancel, past, employees }) {
+function MeetingCard({ m, canCancel, onCancel, onEdit, past, employees }) {
   const [expanded, setExpanded] = useState(false);
   const start = new Date(m.starts_at);
   const end = new Date(m.ends_at);
@@ -256,10 +276,25 @@ function MeetingCard({ m, canCancel, onCancel, past, employees }) {
             )}
           </div>
         </div>
-        {canCancel && (
-          <button onClick={onCancel} className="text-slate-400 hover:text-rose-600 shrink-0" data-testid={`cancel-meeting-${m.id}`}>
-            <Trash2 className="h-4 w-4" />
-          </button>
+        {canCancel && !past && m.status !== "cancelled" && (
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={onEdit}
+              className="text-slate-400 hover:text-slate-900 p-1.5 rounded-md hover:bg-slate-100"
+              title="Edit meeting"
+              data-testid={`edit-meeting-${m.id}`}
+            >
+              <PenSquare className="h-4 w-4" />
+            </button>
+            <button
+              onClick={onCancel}
+              className="text-slate-400 hover:text-rose-600 p-1.5 rounded-md hover:bg-rose-50"
+              title="Cancel meeting"
+              data-testid={`cancel-meeting-${m.id}`}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
         )}
       </div>
       <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
@@ -437,28 +472,37 @@ function ApprovalsQueue({ items, onDecide }) {
   );
 }
 
-function NewMeetingDialog({ employees, rooms, prefill, onCreated }) {
+function NewMeetingDialog({ employees, rooms, prefill, initial, onCreated }) {
+  const isEdit = !!initial;
   const toLocal = (d) => {
     const off = d.getTimezoneOffset() * 60000;
     return new Date(d.getTime() - off).toISOString().slice(0, 16);
   };
-  const initStart = prefill?.starts_at ? new Date(prefill.starts_at) : (() => {
-    const d = new Date(); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 1); return d;
-  })();
-  const initEnd = prefill?.ends_at ? new Date(prefill.ends_at) : (() => {
-    const d = new Date(initStart); d.setMinutes(d.getMinutes() + 30); return d;
-  })();
+  const initStart = initial?.starts_at
+    ? new Date(initial.starts_at)
+    : prefill?.starts_at
+    ? new Date(prefill.starts_at)
+    : (() => {
+        const d = new Date(); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 1); return d;
+      })();
+  const initEnd = initial?.ends_at
+    ? new Date(initial.ends_at)
+    : prefill?.ends_at
+    ? new Date(prefill.ends_at)
+    : (() => {
+        const d = new Date(initStart); d.setMinutes(d.getMinutes() + 30); return d;
+      })();
 
   const [form, setForm] = useState({
-    title: "",
-    description: "",
+    title: initial?.title || "",
+    description: initial?.description || "",
     starts_at: toLocal(initStart),
     ends_at: toLocal(initEnd),
-    location: "Online",
-    room_id: prefill?.room_id || "",
-    is_recurring: false,
-    recurrence: { frequency: "weekly", count: 4 },
-    attendee_user_ids: [],
+    location: initial?.location || "Online",
+    room_id: initial?.room_id || prefill?.room_id || "",
+    is_recurring: initial?.is_recurring || false,
+    recurrence: initial?.recurrence || { frequency: "weekly", count: 4 },
+    attendee_user_ids: initial?.attendee_user_ids || [],
   });
   const [conflict, setConflict] = useState(null);
   const [checking, setChecking] = useState(false);
@@ -526,11 +570,16 @@ function NewMeetingDialog({ employees, rooms, prefill, onCreated }) {
         is_recurring: form.is_recurring,
         recurrence: form.is_recurring ? form.recurrence : null,
       };
-      const { data } = await api.post("/meetings", payload);
-      if (data.approval_status === "pending") {
-        toast.success("Meeting submitted — HR will review it shortly.");
+      if (isEdit) {
+        await api.patch(`/meetings/${initial.id}`, payload);
+        toast.success("Meeting updated — participants notified");
       } else {
-        toast.success("Meeting scheduled & invites sent");
+        const { data } = await api.post("/meetings", payload);
+        if (data.approval_status === "pending") {
+          toast.success("Meeting submitted — HR will review it shortly.");
+        } else {
+          toast.success("Meeting scheduled & invites sent");
+        }
       }
       onCreated();
     } catch (e) {
@@ -548,8 +597,8 @@ function NewMeetingDialog({ employees, rooms, prefill, onCreated }) {
   });
 
   return (
-    <DialogContent className="rounded-2xl max-w-2xl" data-testid="new-meeting-dialog">
-      <DialogHeader><DialogTitle className="font-display">Schedule meeting</DialogTitle></DialogHeader>
+    <DialogContent className="rounded-2xl max-w-2xl" data-testid={isEdit ? "edit-meeting-dialog" : "new-meeting-dialog"}>
+      <DialogHeader><DialogTitle className="font-display">{isEdit ? "Edit meeting" : "Schedule meeting"}</DialogTitle></DialogHeader>
       <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
         <div>
           <Label>Title</Label>
@@ -722,7 +771,7 @@ function NewMeetingDialog({ employees, rooms, prefill, onCreated }) {
                 disabled={!!conflict}
                 className="bg-slate-900 hover:bg-slate-800 text-white disabled:opacity-50"
                 data-testid="meeting-submit">
-          {needsApproval ? "Submit for approval" : "Schedule"}
+          {isEdit ? "Save changes" : (needsApproval ? "Submit for approval" : "Schedule")}
         </Button>
       </DialogFooter>
     </DialogContent>

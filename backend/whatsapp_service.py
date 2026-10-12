@@ -27,6 +27,8 @@ DEFAULT_TEMPLATES = {
     "leave_request": "hrmis_leave_request",
     "wfh_request": "hrmis_wfh_request",
     "meeting_scheduled": "hrmis_meeting_scheduled",
+    "meeting_updated": "hrmis_meeting_updated",
+    "meeting_cancelled": "hrmis_meeting_cancelled",
     "checkin_checkout": "hrmis_checkin_checkout",
     "password_reset_otp": "hrms_account_verification",
 }
@@ -36,6 +38,8 @@ DEFAULT_EVENTS_ENABLED = {
     "leave_request": True,
     "wfh_request": True,
     "meeting_scheduled": True,
+    "meeting_updated": True,
+    "meeting_cancelled": True,
     "checkin_checkout": True,
     "password_reset_otp": True,
 }

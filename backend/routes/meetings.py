@@ -8,7 +8,11 @@ from pydantic import BaseModel
 from auth import get_current_user, require_roles
 from db import get_db
 from email_service import send_email, render
-from notification_service import notify_meeting_scheduled
+from notification_service import (
+    notify_meeting_scheduled,
+    notify_meeting_updated,
+    notify_meeting_cancelled,
+)
 from tenant import company_id_of
 
 router = APIRouter(prefix="/api/meetings", tags=["meetings"])
@@ -27,6 +31,18 @@ class MeetingCreate(BaseModel):
     room_id: Optional[str] = None
     is_recurring: Optional[bool] = False
     recurrence: Optional[dict] = None  # {frequency: 'weekly'|'daily'|'monthly', count: int}
+
+
+class MeetingUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    starts_at: Optional[str] = None
+    ends_at: Optional[str] = None
+    location: Optional[str] = None
+    attendee_user_ids: Optional[List[str]] = None
+    room_id: Optional[str] = None  # pass empty string "" to clear the room
+    is_recurring: Optional[bool] = None
+    recurrence: Optional[dict] = None
 
 
 class DecisionBody(BaseModel):
@@ -305,6 +321,150 @@ async def reject_meeting(meeting_id: str, body: DecisionBody,
     return {"success": True}
 
 
+@router.patch("/{meeting_id}")
+async def update_meeting(
+    meeting_id: str,
+    body: MeetingUpdate,
+    user: dict = Depends(get_current_user),
+):
+    """Edit a scheduled meeting and notify every active participant.
+
+    Rules:
+      • Only the organizer or super_admin / HR may edit.
+      • Cancelled meetings are immutable.
+      • Changing room / time re-runs the room conflict check.
+      • A WhatsApp update ping is sent to every attendee (plus a summary of
+        which fields changed) when the meeting is in a confirmed state
+        (auto-approved or approved).
+    """
+    db = get_db()
+    existing = await db.meetings.find_one({"id": meeting_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    if existing["created_by"] != user["id"] and user.get("role") not in ("super_admin", "hr"):
+        raise HTTPException(status_code=403, detail="Only the organizer can edit this meeting")
+    if existing.get("status") == "cancelled":
+        raise HTTPException(status_code=400, detail="Cancelled meetings cannot be edited")
+
+    patch = body.model_dump(exclude_unset=True)
+    update: dict = {}
+
+    # Times — must stay valid together
+    new_starts = patch.get("starts_at", existing["starts_at"])
+    new_ends = patch.get("ends_at", existing["ends_at"])
+    if new_ends <= new_starts:
+        raise HTTPException(status_code=400, detail="End time must be after start time")
+    if "starts_at" in patch: update["starts_at"] = patch["starts_at"]
+    if "ends_at" in patch:   update["ends_at"] = patch["ends_at"]
+    if "starts_at" in patch or "ends_at" in patch:
+        update["duration_minutes"] = _duration_minutes(new_starts, new_ends)
+
+    # Room (empty string clears)
+    cid = existing["company_id"]
+    new_room_id = patch["room_id"] if "room_id" in patch else existing.get("room_id")
+    new_room_id = new_room_id or None
+    if "room_id" in patch:
+        if new_room_id:
+            room = await db.meeting_rooms.find_one(
+                {"id": new_room_id, "company_id": cid, "active": True},
+                {"_id": 0, "id": 1, "name": 1, "capacity": 1},
+            )
+            if not room:
+                raise HTTPException(status_code=400, detail="Selected meeting room is not available")
+            update["room_id"] = new_room_id
+            update["room_name"] = room["name"]
+            update["room_capacity"] = room["capacity"]
+        else:
+            update["room_id"] = None
+            update["room_name"] = None
+            update["room_capacity"] = None
+
+    # Room conflict check (either room or time changed, and room is set)
+    final_room_id = update.get("room_id", existing.get("room_id"))
+    if final_room_id and ("room_id" in patch or "starts_at" in patch or "ends_at" in patch):
+        conflict = await _has_conflict(
+            db, cid=cid, room_id=final_room_id,
+            starts_at=new_starts, ends_at=new_ends,
+            exclude_meeting_id=meeting_id,
+        )
+        if conflict:
+            s = datetime.fromisoformat(conflict["starts_at"].replace("Z", "+00:00"))
+            e = datetime.fromisoformat(conflict["ends_at"].replace("Z", "+00:00"))
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": f"That room is already booked from "
+                               f"{s.strftime('%H:%M')} to {e.strftime('%H:%M')} "
+                               f"for \"{conflict['title']}\".",
+                    "conflict": conflict,
+                },
+            )
+
+    for k in ("title", "description", "location", "is_recurring", "recurrence"):
+        if k in patch:
+            update[k] = patch[k]
+    if "attendee_user_ids" in patch:
+        update["attendee_user_ids"] = patch["attendee_user_ids"] or []
+
+    # Build human-readable change summary BEFORE the update, so attendees know
+    # what moved. Keep it short — one line.
+    change_bits: list = []
+    def _fmt_dt(s: str) -> str:
+        try:
+            return datetime.fromisoformat(s.replace("Z", "+00:00")).strftime("%d %b %H:%M")
+        except Exception:
+            return s
+    if "title" in patch and patch["title"] != existing.get("title"):
+        change_bits.append(f"title → {patch['title']}")
+    if "starts_at" in patch and patch["starts_at"] != existing.get("starts_at"):
+        change_bits.append(f"start → {_fmt_dt(patch['starts_at'])}")
+    if "ends_at" in patch and patch["ends_at"] != existing.get("ends_at"):
+        change_bits.append(f"end → {_fmt_dt(patch['ends_at'])}")
+    if "room_id" in patch and update.get("room_name") != existing.get("room_name"):
+        change_bits.append(f"room → {update.get('room_name') or 'none'}")
+    if "location" in patch and patch["location"] != existing.get("location"):
+        change_bits.append(f"location → {patch['location']}")
+    if "attendee_user_ids" in patch:
+        before = set(existing.get("attendee_user_ids") or [])
+        after = set(update.get("attendee_user_ids") or [])
+        if before != after:
+            change_bits.append(f"participants updated ({len(after)} total)")
+    change_summary = "; ".join(change_bits) or "details updated"
+
+    if not update:
+        return existing
+
+    update["updated_at"] = _now_iso()
+    update["updated_by"] = user["name"]
+    await db.meetings.update_one({"id": meeting_id}, {"$set": update})
+    merged = {**existing, **update}
+
+    # Notify every active attendee — only when the meeting is confirmed
+    if merged.get("approval_status") in ("auto_approved", "approved"):
+        for uid in merged.get("attendee_user_ids", []):
+            await db.notifications.insert_one({
+                "id": str(uuid.uuid4()),
+                "user_id": uid,
+                "type": "meeting_updated",
+                "title": "Meeting updated",
+                "body": f"{merged.get('title')}: {change_summary}",
+                "read": False,
+                "created_at": _now_iso(),
+            })
+        await notify_meeting_updated(
+            company_id=cid,
+            organizer_name=merged.get("created_by_name") or user["name"],
+            title=merged.get("title", ""),
+            starts_at=merged.get("starts_at", ""),
+            ends_at=merged.get("ends_at"),
+            attendee_user_ids=merged.get("attendee_user_ids", []),
+            change_summary=change_summary,
+        )
+
+    merged.pop("_id", None)
+    return merged
+
+
 @router.delete("/{meeting_id}")
 async def cancel_meeting(meeting_id: str, user: dict = Depends(get_current_user)):
     db = get_db()
@@ -313,5 +473,32 @@ async def cancel_meeting(meeting_id: str, user: dict = Depends(get_current_user)
         raise HTTPException(status_code=404, detail="Not found")
     if meeting["created_by"] != user["id"] and user["role"] not in ("super_admin", "hr"):
         raise HTTPException(status_code=403, detail="Not allowed")
-    await db.meetings.update_one({"id": meeting_id}, {"$set": {"status": "cancelled"}})
+    if meeting.get("status") == "cancelled":
+        return {"success": True}
+    await db.meetings.update_one({"id": meeting_id}, {"$set": {
+        "status": "cancelled",
+        "cancelled_at": _now_iso(),
+        "cancelled_by": user["name"],
+    }})
+    # Fire WhatsApp + in-app notification only if the meeting was previously
+    # confirmed (otherwise participants never saw it).
+    if meeting.get("approval_status") in ("auto_approved", "approved"):
+        for uid in meeting.get("attendee_user_ids", []):
+            await db.notifications.insert_one({
+                "id": str(uuid.uuid4()),
+                "user_id": uid,
+                "type": "meeting_cancelled",
+                "title": "Meeting cancelled",
+                "body": f"\"{meeting['title']}\" was cancelled by {user['name']}.",
+                "read": False,
+                "created_at": _now_iso(),
+            })
+        await notify_meeting_cancelled(
+            company_id=meeting["company_id"],
+            organizer_name=meeting.get("created_by_name") or user["name"],
+            title=meeting.get("title", ""),
+            starts_at=meeting.get("starts_at", ""),
+            ends_at=meeting.get("ends_at"),
+            attendee_user_ids=meeting.get("attendee_user_ids", []),
+        )
     return {"success": True}
