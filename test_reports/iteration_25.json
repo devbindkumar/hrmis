@@ -1,0 +1,34 @@
+{
+  "summary": "Iter25 verified the new PATCH /api/meetings/{id} revert-to-pending guard. New suite /app/backend/tests/test_iter25_edit_approval_revert.py — 4/4 PASS. Covered: (1) alex (manager) PATCHes a 30-min auto_approved meeting into a 3-hour window → response 200 with approval_status='pending', approved_by=None, approved_at=None, ZERO attendee meeting_updated notifications, ZERO WA hrmis_meeting_updated outbox rows, EXACTLY one meeting_approval_request in-app notification per HR + super_admin in the tenant, and the HR notification body contains both the meeting title and the actor's name ('Alex Rivera'); (2) non-regression: super_admin PATCHing the same long-duration edit keeps approval_status='auto_approved' and DOES fan out attendee in-app + WA (meeting_updated), no HR approval ping created; (3) non-regression: alex PATCH on a short (<120 min, non-recurring) meeting still fires meeting_updated in-app + WA fan-out (previous iter24 behaviour preserved); (4) extra: HR (jordan) lengthening a short meeting also bypasses revert (same authority as super_admin). Iter24 suite rerun: 14/15 PASS — the single failure is test_patch_room_conflict_409 which is NOT caused by iter25: it uses fixed hours_from_now=10/11 slots and collides with stale meetings created by previous iter24 runs (pre-existing test-data pollution). Suggested fix: either randomize the hour offset in the fixture or clean db.meetings on test_patch_room_conflict_409 setup.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/app/backend/tests/test_iter24_meeting_edit_cancel.py::test_patch_room_conflict_409", "issue": "Flaky due to fixed future-hour slots colliding with stale meetings from prior runs. Not a product bug — test isolation issue. Randomize hours_from_now or add a cleanup for the fixed slot."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter25_edit_approval_revert.py",
+    "/app/test_reports/pytest/iter25_results.xml",
+    "/app/test_reports/pytest/iter24_rerun.xml"
+  ],
+  "action_items": [
+    "(Optional / nice-to-have) de-flake iter24 test_patch_room_conflict_409 by randomizing hours_from_now or cleaning db.meetings for the test's slot. Not an iter25 regression.",
+    "(Optional) consider also notifying the organizer that their edit was reverted — currently only HR gets the ping, the organizer sees nothing beyond the 200 response.",
+    "(Optional) consider also reverting on PATCH when attendee_user_ids grows beyond a threshold (same semantics as 'needs_approval' at create). Currently only duration + is_recurring are re-evaluated."
+  ],
+  "critical_code_review_comments": [
+    "routes/meetings.py PATCH branch is correct: needs_approval_now = final_duration > 120 or is_recurring; only reverts when approval_was == 'auto_approved' AND editor role not in (super_admin, hr). HR notification body includes actor name + meeting title. approved_by/approved_at explicitly cleared to None. Early return after HR fan-out correctly skips the attendee notification + WA block.",
+    "Minor: the HR fan-out loop uses await db.notifications.insert_one per HR user — fine for small HR counts but a bulk insert would scale better in large tenants.",
+    "Minor: notification body says 'extended ... past the long-meeting threshold'. If the trigger was flipping is_recurring=True on a short meeting (not an extension), the wording is misleading. Consider branching the copy on the actual trigger."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter25_edit_approval_revert.py"
+  ],
+  "success_rate": {"backend": "100% iter25 (4/4); iter24 regression 93% (14/15, 1 pre-existing flake unrelated to iter25)", "frontend": "n/a (backend-only run)"},
+  "test_credentials": "See /app/memory/test_credentials.md. admin@acme.com/Admin@123, alex@acme.com/Demo@123, maya/diego/jordan @acme.com /Demo@123. No lockouts hit during this run.",
+  "seed_data_creation": "Reused iter24 WA config (azmarq, test key, all meeting_* events enabled) and attendee phones. No new seed data created.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter25 revert-to-pending guard fully green. Reuse /app/backend/tests/test_iter25_edit_approval_revert.py for regression alongside iter24. Note the iter24 room-conflict test is flaky due to fixed future slots — if you see it fail, it's test isolation, not product. All assertions on approval_status==pending/approved_by=None/approved_at=None and HR notification body (title + actor name) are stable."
+}

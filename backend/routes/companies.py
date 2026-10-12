@@ -123,6 +123,7 @@ async def create_company(body: CompanyCreate, admin: dict = Depends(require_role
             "total": qty,
             "used": 0,
         })
+    company.pop("_id", None)
     return {"company": company, "admin_user_id": admin_user_id}
 
 

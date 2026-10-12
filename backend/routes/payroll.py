@@ -291,6 +291,61 @@ async def my_payslips(user: dict = Depends(get_current_user)):
     return items
 
 
+@router.get("/payslips/export.csv")
+async def export_payslips_csv(
+    user: dict = Depends(require_roles("super_admin", "hr")),
+    period: Optional[str] = None,
+    status: Optional[str] = None,
+):
+    db = get_db()
+    q: dict = {"company_id": company_id_of(user)}
+    if period:
+        q["period"] = period
+    if status and status != "all":
+        q["status"] = status
+    items = await db.payslips.find(q, {"_id": 0}).sort([("period", -1), ("user_name", 1)]).to_list(5000)
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "Period", "Employee", "Code", "Designation", "Currency",
+        "Base", "HRA", "Transport", "Special", "Gross",
+        "PF %", "PF amount", "Tax %", "Tax amount", "Total deductions", "Net",
+        "Status", "Generated at", "Finalized at", "Paid at",
+    ])
+    for ps in items:
+        c = ps.get("components", {})
+        writer.writerow([
+            ps.get("period", ""),
+            ps.get("user_name", ""),
+            ps.get("employee_code", ""),
+            ps.get("designation", ""),
+            c.get("currency", ""),
+            c.get("base_salary", ""),
+            c.get("hra", ""),
+            c.get("transport", ""),
+            c.get("special", ""),
+            c.get("gross", ""),
+            c.get("pf_pct", ""),
+            c.get("pf_amount", ""),
+            c.get("tax_pct", ""),
+            c.get("tax_amount", ""),
+            c.get("total_deductions", ""),
+            c.get("net", ""),
+            ps.get("status", ""),
+            ps.get("generated_at", ""),
+            ps.get("finalized_at", ""),
+            ps.get("paid_at", ""),
+        ])
+    buf.seek(0)
+    filename = f"payslips-{period or 'all'}-{datetime.now(timezone.utc).date().isoformat()}.csv"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/payslips/{payslip_id}")
 async def get_payslip(payslip_id: str, user: dict = Depends(get_current_user)):
     db = get_db()
@@ -511,58 +566,4 @@ async def list_runs(admin: dict = Depends(require_roles("super_admin", "hr"))):
     return items
 
 
-# ---------------- CSV export ----------------
-
-@router.get("/payslips/export.csv")
-async def export_payslips_csv(
-    user: dict = Depends(require_roles("super_admin", "hr")),
-    period: Optional[str] = None,
-    status: Optional[str] = None,
-):
-    db = get_db()
-    q: dict = {"company_id": company_id_of(user)}
-    if period:
-        q["period"] = period
-    if status and status != "all":
-        q["status"] = status
-    items = await db.payslips.find(q, {"_id": 0}).sort([("period", -1), ("user_name", 1)]).to_list(5000)
-
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow([
-        "Period", "Employee", "Code", "Designation", "Currency",
-        "Base", "HRA", "Transport", "Special", "Gross",
-        "PF %", "PF amount", "Tax %", "Tax amount", "Total deductions", "Net",
-        "Status", "Generated at", "Finalized at", "Paid at",
-    ])
-    for ps in items:
-        c = ps.get("components", {})
-        writer.writerow([
-            ps.get("period", ""),
-            ps.get("user_name", ""),
-            ps.get("employee_code", ""),
-            ps.get("designation", ""),
-            c.get("currency", ""),
-            c.get("base_salary", ""),
-            c.get("hra", ""),
-            c.get("transport", ""),
-            c.get("special", ""),
-            c.get("gross", ""),
-            c.get("pf_pct", ""),
-            c.get("pf_amount", ""),
-            c.get("tax_pct", ""),
-            c.get("tax_amount", ""),
-            c.get("total_deductions", ""),
-            c.get("net", ""),
-            ps.get("status", ""),
-            ps.get("generated_at", ""),
-            ps.get("finalized_at", ""),
-            ps.get("paid_at", ""),
-        ])
-    buf.seek(0)
-    filename = f"payslips-{period or 'all'}-{datetime.now(timezone.utc).date().isoformat()}.csv"
-    return StreamingResponse(
-        iter([buf.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+# ---------------- CSV export route moved above /payslips/{payslip_id} to avoid route shadowing ----------------
