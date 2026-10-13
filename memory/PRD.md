@@ -173,3 +173,10 @@ See `/app/memory/test_credentials.md`.
 - Added `hrmis_meeting_updated` (6 vars: attendee, organizer, title, date, time, changes) and `hrmis_meeting_cancelled` (5 vars: attendee, title, date, time, cancelled_by) template specs, test-send samples, and event toggles on Admin > WhatsApp.
 - Smart routing on meeting edit: added → scheduled invite, removed → cancelled, retained → updated. Fixed empty 6th param on cancellation.
 - Tested: iteration_27 (backend 6/6, frontend 100%).
+
+## 2026-06 — Google Meet / Calendar Integration
+- One company Google account per tenant connected by Super Admin (Settings > Google Meet & Calendar). OAuth tokens in `google_integrations` collection; endpoints `/api/google/status|oauth/start|oauth/callback|disconnect`.
+- Meeting form "Add Google Meet" checkbox → Calendar event with Meet link (sendUpdates=all, Google native invites). `google_event_id`, `meet_link` saved; link in HRMS email + "Join Google Meet" button on card. Edit → PATCH event; cancel/untick → delete event.
+- Env: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET (EMPTY — awaiting user), GOOGLE_REDIRECT_URI. Feature inactive until creds added.
+- Tested iteration_28 (22/22 backend incl. mocked Google calls, frontend 100%).
+- Backlog: include Meet link in WhatsApp meeting templates; alert super admin if Google token refresh fails.

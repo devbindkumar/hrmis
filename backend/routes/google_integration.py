@@ -1,3 +1,4 @@
+import logging
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -40,7 +41,8 @@ async def oauth_callback(code: str = "", state: str = "", error: str = ""):
     try:
         st = decode_state(state)
         await exchange_code(st["cid"], st["uid"], code)
-    except Exception:
+    except Exception as e:
+        logging.getLogger("hrmis.google").error(f"google oauth callback failed: {e}")
         return RedirectResponse(f"{target}?google=error&reason=exchange_failed")
     return RedirectResponse(f"{target}?google=connected")
 

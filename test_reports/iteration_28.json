@@ -1,0 +1,25 @@
+{
+  "summary": "Iteration 28 — Google Meet / Calendar integration (gracefully inactive while GOOGLE_CLIENT_ID/SECRET are empty). Added /app/backend/tests/test_iter28_google_integration.py (22 tests). Covered /api/google status + oauth/start + oauth/callback (307 redirects for access_denied + bogus state) + disconnect role gating, /api/meetings create/patch/delete with add_google_meet (no 500, meet_link stays null since Google not configured), WhatsApp smart routing regression (iter27) and unit-level google_calendar_service with monkeypatched httpx (create_event sends conferenceData.createRequest hangoutsMeet + conferenceDataVersion=1 + sendUpdates=all, update_event PATCHes with sendUpdates=all, cancel_event DELETEs with sendUpdates=all, _event_body converts times to tenant tz Asia/Kolkata and maps attendee user ids to emails). All 22 pass. Frontend verified via Playwright: admin sees google-meet-panel on /admin/settings with 'Credentials missing' badge, connect button disabled, redirect_uri displayed; manager/employee do NOT see the panel; new meeting dialog shows google-meet-toggle-block with the checkbox disabled and helper text 'Google Meet isn't connected yet'; meeting-join-meet-{id} button renders only when meet_link is present (seeded directly in Mongo).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter28_google_integration.py",
+    "/app/test_reports/pytest/iter28.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "google_calendar_service.update_event sends conferenceDataVersion=1 even for a pure PATCH that doesn't change conferenceData — harmless but unnecessary; not blocking.",
+    "oauth_callback eats every exception into reason=exchange_failed; consider logging the underlying error (currently only a swallowed except Exception) to aid debugging in prod.",
+    "google_calendar_service._access_token returns None silently when refresh fails; meetings continue to be created without a meet_link but without any user-facing signal — maybe surface a one-time toast / notification to super_admin.",
+    "notify_meeting_scheduled still fires on auto_approved meetings even when add_google_meet=True and Google is connected; the WhatsApp message does not include the Meet link, so attendees get Google's native invite PLUS a separate WA message without the link. Consider adding meet_link into the WA templating."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter28_google_integration.py"
+  ],
+  "success_rate": {"backend": "100% (22/22)", "frontend": "100% (admin panel, role-gating, meetings dialog toggle, seeded join-link render all pass)"},
+  "test_credentials": "admin@acme.com/Admin@123, alex@acme.com/Demo@123 (manager — review request said Manager@123 which does NOT work; test_credentials.md is source of truth), maya@acme.com/Demo@123, jordan@acme.com/Demo@123",
+  "seed_data_creation": "Inserted one TEST_iter28_mongo_meet document directly into hrmis_database.meetings with a fake meet_link to verify meeting-join-meet-{id} button renders; cleaned up at end of script. Pytest also created and cancelled several TEST_iter28_* meetings.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Google creds remain intentionally empty in /app/backend/.env. GOOGLE_REDIRECT_URI is set so is_configured() is still False (needs all three). pytest-asyncio was installed in this env to run the gcal unit tests — if your runner is fresh, pip install pytest-asyncio. Run tests with `python -m pytest tests/test_iter28_google_integration.py --asyncio-mode=auto`. Review request mentioned Manager@123/Employee@123 passwords that do NOT exist — the real seeded passwords are Demo@123 (from /app/memory/test_credentials.md)."
+}
