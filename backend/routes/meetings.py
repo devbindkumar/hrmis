@@ -14,6 +14,7 @@ from notification_service import (
     notify_meeting_cancelled,
 )
 from tenant import company_id_of
+import google_calendar_service as gcal
 
 router = APIRouter(prefix="/api/meetings", tags=["meetings"])
 
@@ -31,6 +32,7 @@ class MeetingCreate(BaseModel):
     room_id: Optional[str] = None
     is_recurring: Optional[bool] = False
     recurrence: Optional[dict] = None  # {frequency: 'weekly'|'daily'|'monthly', count: int}
+    add_google_meet: Optional[bool] = False
 
 
 class MeetingUpdate(BaseModel):
@@ -43,6 +45,7 @@ class MeetingUpdate(BaseModel):
     room_id: Optional[str] = None  # pass empty string "" to clear the room
     is_recurring: Optional[bool] = None
     recurrence: Optional[dict] = None
+    add_google_meet: Optional[bool] = None
 
 
 class DecisionBody(BaseModel):
@@ -79,6 +82,15 @@ async def _has_conflict(db, *, cid: str, room_id: str, starts_at: str, ends_at: 
     })
 
 
+async def _google_create(db, doc: dict) -> None:
+    if not doc.get("add_google_meet") or doc.get("google_event_id"):
+        return
+    res = await gcal.create_event(doc)
+    if res:
+        await db.meetings.update_one({"id": doc["id"]}, {"$set": res})
+        doc.update(res)
+
+
 async def _notify_and_email(db, doc: dict, organiser: dict, *, subject_prefix: str = "Invite"):
     for uid in doc.get("attendee_user_ids", []):
         await db.notifications.insert_one({
@@ -93,6 +105,8 @@ async def _notify_and_email(db, doc: dict, organiser: dict, *, subject_prefix: s
         attendee = await db.users.find_one({"id": uid}, {"_id": 0})
         if attendee:
             room_line = f"<br/>Room: <b>{doc.get('room_name')}</b>" if doc.get("room_name") else ""
+            if doc.get("meet_link"):
+                room_line += f"<br/>Google Meet: <a href=\"{doc['meet_link']}\">{doc['meet_link']}</a>"
             html = render(
                 f"You're invited to a meeting",
                 f"<p>Hi {attendee['name']},</p><p><b>{organiser['name']}</b> invited you to:</p>"
@@ -215,6 +229,9 @@ async def create_meeting(body: MeetingCreate, user: dict = Depends(get_current_u
         "approved_by": approved_by,
         "approved_at": approved_at,
         "rejection_reason": None,
+        "add_google_meet": bool(body.add_google_meet),
+        "google_event_id": None,
+        "meet_link": None,
         "created_at": _now_iso(),
     }
     await db.meetings.insert_one(doc)
@@ -239,6 +256,7 @@ async def create_meeting(body: MeetingCreate, user: dict = Depends(get_current_u
 
     # Only fire attendee invites / WhatsApp when the meeting is confirmed
     if approval_status in ("auto_approved", "approved"):
+        await _google_create(db, doc)
         await _notify_and_email(db, doc, user)
 
     doc.pop("_id", None)
@@ -278,6 +296,7 @@ async def approve_meeting(meeting_id: str, body: DecisionBody,
 
     # Fire the invites + WhatsApp now that it's confirmed
     organiser = await db.users.find_one({"id": m["created_by"]}, {"_id": 0}) or {"name": m.get("created_by_name", "")}
+    await _google_create(db, m)
     await _notify_and_email(db, m, organiser, subject_prefix="Confirmed")
 
     # Ping the organiser
@@ -400,7 +419,7 @@ async def update_meeting(
                 },
             )
 
-    for k in ("title", "description", "location", "is_recurring", "recurrence"):
+    for k in ("title", "description", "location", "is_recurring", "recurrence", "add_google_meet"):
         if k in patch:
             update[k] = patch[k]
     if "attendee_user_ids" in patch:
@@ -481,6 +500,17 @@ async def update_meeting(
     # Smart routing (only for confirmed meetings): added → invite,
     # removed → cancelled, retained → updated.
     if merged.get("approval_status") in ("auto_approved", "approved"):
+        if merged.get("google_event_id"):
+            if merged.get("add_google_meet") is False:
+                await gcal.cancel_event(merged)
+                clear = {"google_event_id": None, "meet_link": None, "google_event_link": None}
+                await db.meetings.update_one({"id": meeting_id}, {"$set": clear})
+                merged.update(clear)
+            else:
+                await gcal.update_event(merged)
+        else:
+            await _google_create(db, merged)
+
         before_ids = existing.get("attendee_user_ids") or []
         after_ids = merged.get("attendee_user_ids") or []
         added = [u for u in after_ids if u not in before_ids]
@@ -548,6 +578,8 @@ async def cancel_meeting(meeting_id: str, user: dict = Depends(get_current_user)
         raise HTTPException(status_code=403, detail="Not allowed")
     if meeting.get("status") == "cancelled":
         return {"success": True}
+    if meeting.get("google_event_id"):
+        await gcal.cancel_event(meeting)
     await db.meetings.update_one({"id": meeting_id}, {"$set": {
         "status": "cancelled",
         "cancelled_at": _now_iso(),

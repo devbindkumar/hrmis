@@ -264,6 +264,17 @@ function MeetingCard({ m, canCancel, onCancel, onEdit, past, employees }) {
             {start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} → {end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             {typeof m.duration_minutes === "number" && <> · {m.duration_minutes}m</>}
           </div>
+          {m.meet_link && m.status !== "cancelled" && (
+            <a
+              href={m.meet_link}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-1.5 transition-colors"
+              data-testid={`meeting-join-meet-${m.id}`}
+            >
+              <Video className="h-3.5 w-3.5" /> Join Google Meet
+            </a>
+          )}
           {m.description && <MeetingDescription text={m.description} />}
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
             {badge && (
@@ -472,6 +483,38 @@ function ApprovalsQueue({ items, onDecide }) {
   );
 }
 
+function GoogleMeetToggle({ checked, onChange, existingLink }) {
+  const [status, setStatus] = useState(null);
+  useEffect(() => {
+    api.get("/google/status").then((r) => setStatus(r.data)).catch(() => setStatus({ connected: false }));
+  }, []);
+  if (!status) return null;
+  return (
+    <div className="rounded-lg border border-slate-200 p-3" data-testid="google-meet-toggle-block">
+      <label className={`flex items-center gap-2 text-sm ${status.connected ? "cursor-pointer text-slate-700" : "text-slate-400"}`}>
+        <Checkbox
+          checked={!!checked}
+          disabled={!status.connected}
+          onCheckedChange={(v) => onChange(!!v)}
+          data-testid="meeting-add-google-meet"
+        />
+        <Video className="h-3.5 w-3.5 text-emerald-600" />
+        Add Google Meet video link
+      </label>
+      <p className="text-[11px] text-slate-500 mt-1 ml-6">
+        {status.connected
+          ? "A Meet link is created and Google emails a calendar invite to every participant."
+          : "Google Meet isn't connected yet. A Super Admin can connect it in Settings."}
+      </p>
+      {existingLink && (
+        <p className="text-[11px] mt-1 ml-6 break-all">
+          Current link: <a href={existingLink} target="_blank" rel="noreferrer" className="text-emerald-700 underline" data-testid="meeting-existing-meet-link">{existingLink}</a>
+        </p>
+      )}
+    </div>
+  );
+}
+
 function NewMeetingDialog({ employees, rooms, prefill, initial, onCreated }) {
   const isEdit = !!initial;
   const toLocal = (d) => {
@@ -503,6 +546,7 @@ function NewMeetingDialog({ employees, rooms, prefill, initial, onCreated }) {
     is_recurring: initial?.is_recurring || false,
     recurrence: initial?.recurrence || { frequency: "weekly", count: 4 },
     attendee_user_ids: initial?.attendee_user_ids || [],
+    add_google_meet: initial?.add_google_meet || false,
   });
   const [conflict, setConflict] = useState(null);
   const [checking, setChecking] = useState(false);
@@ -572,6 +616,7 @@ function NewMeetingDialog({ employees, rooms, prefill, initial, onCreated }) {
         attendee_user_ids: form.attendee_user_ids,
         is_recurring: form.is_recurring,
         recurrence: form.is_recurring ? form.recurrence : null,
+        add_google_meet: form.add_google_meet,
       };
       if (isEdit) {
         await api.patch(`/meetings/${initial.id}`, payload);
@@ -662,6 +707,12 @@ function NewMeetingDialog({ employees, rooms, prefill, initial, onCreated }) {
             </div>
           )}
         </div>
+
+        <GoogleMeetToggle
+          checked={form.add_google_meet}
+          onChange={(v) => setForm({ ...form, add_google_meet: v })}
+          existingLink={initial?.meet_link}
+        />
 
         <div>
           <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
