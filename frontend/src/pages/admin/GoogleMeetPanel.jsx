@@ -3,8 +3,10 @@ import { useSearchParams } from "react-router-dom";
 import api, { formatApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Video, Link2, Unlink, Copy } from "lucide-react";
+import { Video, Link2, Unlink, Copy, KeyRound, Trash2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function GoogleMeetPanel() {
@@ -13,7 +15,37 @@ export default function GoogleMeetPanel() {
   const [busy, setBusy] = useState(false);
   const [params, setParams] = useSearchParams();
 
-  const load = () => api.get("/google/status").then((r) => setStatus(r.data)).catch(() => setStatus(null));
+  const [creds, setCreds] = useState({ client_id: "", client_secret: "" });
+
+  const apply = (data) => {
+    setStatus(data);
+    setCreds({ client_id: data.client_id || "", client_secret: "" });
+  };
+  const load = () => api.get("/google/status").then((r) => apply(r.data)).catch(() => setStatus(null));
+
+  const saveCreds = async () => {
+    setBusy(true);
+    try {
+      const { data } = await api.put("/google/credentials", {
+        client_id: creds.client_id,
+        client_secret: creds.client_secret || null,
+      });
+      apply(data);
+      toast.success("Google credentials saved — now click Connect Google");
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+    setBusy(false);
+  };
+
+  const clearCreds = async () => {
+    if (!window.confirm("Remove the saved Client ID & Secret? This also disconnects Google.")) return;
+    setBusy(true);
+    try {
+      const { data } = await api.delete("/google/credentials");
+      apply(data);
+      toast.success("Google credentials removed");
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+    setBusy(false);
+  };
 
   useEffect(() => {
     load();
@@ -73,8 +105,60 @@ export default function GoogleMeetPanel() {
           ? <>Meetings with "Add Google Meet" ticked are created on <b data-testid="google-connected-email">{status.email}</b>. Google emails calendar invites, updates and cancellations to every participant.</>
           : status.configured
           ? "Connect your company Google account (e.g. hr@yourcompany.com) once. All HRMS meetings with a Meet link will be created under it."
-          : "Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to the server environment, then connect your company Google account here."}
+          : "Paste your Google OAuth Client ID and Client Secret below, save, then connect your company Google account."}
       </p>
+      <div className="mt-4 rounded-xl border border-slate-200 p-4 space-y-3" data-testid="google-creds-form">
+        <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
+          <KeyRound className="h-3.5 w-3.5 text-slate-500" /> OAuth credentials
+          {status.creds_source === "env" && (
+            <span className="text-[11px] font-normal text-slate-500">(currently using server defaults)</span>
+          )}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <Label>Client ID</Label>
+            <Input
+              value={creds.client_id}
+              onChange={(e) => setCreds({ ...creds, client_id: e.target.value })}
+              placeholder="xxxxxxxx.apps.googleusercontent.com"
+              className="mt-1.5 font-mono text-xs"
+              data-testid="google-client-id-input"
+            />
+          </div>
+          <div>
+            <Label>Client Secret</Label>
+            <Input
+              type="password"
+              value={creds.client_secret}
+              onChange={(e) => setCreds({ ...creds, client_secret: e.target.value })}
+              placeholder={status.client_secret_masked ? `Saved ${status.client_secret_masked} — type to replace` : "GOCSPX-…"}
+              className="mt-1.5 font-mono text-xs"
+              autoComplete="new-password"
+              data-testid="google-client-secret-input"
+            />
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2 flex-wrap">
+          {status.creds_source === "settings" && (
+            <Button variant="outline" size="sm" onClick={clearCreds} disabled={busy} className="rounded-lg text-rose-600" data-testid="google-clear-creds-btn">
+              <Trash2 className="h-3.5 w-3.5 mr-1" /> Remove keys
+            </Button>
+          )}
+          <Button
+            size="sm"
+            onClick={saveCreds}
+            disabled={busy || !creds.client_id.trim() || (!creds.client_secret.trim() && status.creds_source !== "settings")}
+            className="rounded-lg bg-slate-900 hover:bg-slate-800 text-white"
+            data-testid="google-save-creds-btn"
+          >
+            Save credentials
+          </Button>
+        </div>
+        {status.connected && (
+          <p className="text-[11px] text-amber-700">Changing the Client ID will disconnect the current Google account.</p>
+        )}
+      </div>
+
       {status.redirect_uri && !status.connected && (
         <div className="mt-3 text-xs text-slate-600">
           Authorized redirect URI to add in Google Cloud:

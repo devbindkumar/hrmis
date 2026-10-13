@@ -23,29 +23,51 @@ EVENTS_URI = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
 SCOPES = ["openid", "https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/calendar"]
 
 
-def _client_id() -> str:
-    return os.environ.get("GOOGLE_CLIENT_ID", "")
-
-
-def _client_secret() -> str:
-    return os.environ.get("GOOGLE_CLIENT_SECRET", "")
-
-
 def redirect_uri() -> str:
     return os.environ.get("GOOGLE_REDIRECT_URI", "")
 
 
-def is_configured() -> bool:
-    return bool(_client_id() and _client_secret() and redirect_uri())
+async def _app_creds(company_id: str) -> Dict[str, str]:
+    """Tenant-saved OAuth client, falling back to server env keys."""
+    doc = await get_db().google_app_credentials.find_one({"company_id": company_id}, {"_id": 0}) or {}
+    if doc.get("client_id") and doc.get("client_secret"):
+        return {"client_id": doc["client_id"], "client_secret": doc["client_secret"], "source": "settings"}
+    cid, sec = os.environ.get("GOOGLE_CLIENT_ID", ""), os.environ.get("GOOGLE_CLIENT_SECRET", "")
+    return {"client_id": cid, "client_secret": sec, "source": "env" if cid and sec else ""}
 
 
-def build_auth_url(company_id: str, user_id: str) -> str:
+async def is_configured(company_id: str) -> bool:
+    c = await _app_creds(company_id)
+    return bool(c["client_id"] and c["client_secret"] and redirect_uri())
+
+
+async def save_app_creds(company_id: str, client_id: str, client_secret: Optional[str]) -> None:
+    db = get_db()
+    update: Dict[str, Any] = {"company_id": company_id, "client_id": client_id.strip(),
+                              "updated_at": datetime.now(timezone.utc).isoformat()}
+    if client_secret:
+        update["client_secret"] = client_secret.strip()
+    existing = await db.google_app_credentials.find_one({"company_id": company_id}, {"_id": 0, "client_id": 1})
+    await db.google_app_credentials.update_one({"company_id": company_id}, {"$set": update}, upsert=True)
+    # A different OAuth client invalidates the existing connection
+    if existing and existing.get("client_id") != update["client_id"]:
+        await db.google_integrations.delete_one({"company_id": company_id})
+
+
+async def clear_app_creds(company_id: str) -> None:
+    db = get_db()
+    await db.google_app_credentials.delete_one({"company_id": company_id})
+    await db.google_integrations.delete_one({"company_id": company_id})
+
+
+async def build_auth_url(company_id: str, user_id: str) -> str:
+    creds = await _app_creds(company_id)
     state = jwt.encode(
         {"cid": company_id, "uid": user_id, "exp": datetime.now(timezone.utc) + timedelta(minutes=10)},
         os.environ["JWT_SECRET"], algorithm="HS256",
     )
     return AUTH_URI + "?" + urlencode({
-        "client_id": _client_id(),
+        "client_id": creds["client_id"],
         "redirect_uri": redirect_uri(),
         "response_type": "code",
         "scope": " ".join(SCOPES),
@@ -61,9 +83,10 @@ def decode_state(state: str) -> Dict[str, Any]:
 
 
 async def exchange_code(company_id: str, user_id: str, code: str) -> str:
+    creds = await _app_creds(company_id)
     async with httpx.AsyncClient(timeout=20) as c:
         tok = (await c.post(TOKEN_URI, data={
-            "code": code, "client_id": _client_id(), "client_secret": _client_secret(),
+            "code": code, "client_id": creds["client_id"], "client_secret": creds["client_secret"],
             "redirect_uri": redirect_uri(), "grant_type": "authorization_code",
         })).json()
         if "access_token" not in tok:
@@ -88,9 +111,15 @@ async def exchange_code(company_id: str, user_id: str, code: str) -> str:
 
 async def get_status(company_id: str) -> Dict[str, Any]:
     doc = await get_db().google_integrations.find_one({"company_id": company_id}, {"_id": 0, "email": 1, "connected_at": 1})
+    creds = await _app_creds(company_id)
+    configured = await is_configured(company_id)
+    sec = creds["client_secret"]
     return {
-        "configured": is_configured(),
-        "connected": bool(doc) and is_configured(),
+        "configured": configured,
+        "connected": bool(doc) and configured,
+        "creds_source": creds["source"],
+        "client_id": creds["client_id"] if creds["source"] == "settings" else "",
+        "client_secret_masked": ("••••" + sec[-4:]) if creds["source"] == "settings" and sec else "",
         "email": (doc or {}).get("email"),
         "connected_at": (doc or {}).get("connected_at"),
         "redirect_uri": redirect_uri(),
@@ -110,8 +139,9 @@ async def disconnect(company_id: str) -> None:
 
 
 async def _access_token(company_id: str) -> Optional[str]:
-    if not is_configured():
+    if not await is_configured(company_id):
         return None
+    creds = await _app_creds(company_id)
     db = get_db()
     doc = await db.google_integrations.find_one({"company_id": company_id}, {"_id": 0})
     if not doc:
@@ -122,7 +152,7 @@ async def _access_token(company_id: str) -> Optional[str]:
         return None
     async with httpx.AsyncClient(timeout=20) as c:
         tok = (await c.post(TOKEN_URI, data={
-            "client_id": _client_id(), "client_secret": _client_secret(),
+            "client_id": creds["client_id"], "client_secret": creds["client_secret"],
             "refresh_token": doc["refresh_token"], "grant_type": "refresh_token",
         })).json()
     if "access_token" not in tok:

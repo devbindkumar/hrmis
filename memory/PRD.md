@@ -180,3 +180,4 @@ See `/app/memory/test_credentials.md`.
 - Env: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET (EMPTY — awaiting user), GOOGLE_REDIRECT_URI. Feature inactive until creds added.
 - Tested iteration_28 (22/22 backend incl. mocked Google calls, frontend 100%).
 - Backlog: include Meet link in WhatsApp meeting templates; alert super admin if Google token refresh fails.
+- 2026-06: Super Admin can save Google Client ID/Secret per company in Settings (`google_app_credentials` collection, PUT/DELETE /api/google/credentials, secret masked ••••last4); env keys remain fallback. Changing Client ID drops existing connection.
