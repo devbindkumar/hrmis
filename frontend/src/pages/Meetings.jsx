@@ -275,6 +275,12 @@ function MeetingCard({ m, canCancel, onCancel, onEdit, past, employees }) {
               <Video className="h-3.5 w-3.5" /> Join Google Meet
             </a>
           )}
+          {m.add_google_meet && !m.meet_link && m.google_sync_error && m.status !== "cancelled" && (
+            <div className="mt-3 text-[11px] text-rose-600 flex items-start gap-1" data-testid={`meeting-google-error-${m.id}`}>
+              <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+              <span>Meet link not created: {m.google_sync_error} Edit &amp; save the meeting to retry.</span>
+            </div>
+          )}
           {m.description && <MeetingDescription text={m.description} />}
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
             {badge && (
@@ -483,6 +489,12 @@ function ApprovalsQueue({ items, onDecide }) {
   );
 }
 
+function warnGoogle(m) {
+  if (m?.add_google_meet && !m?.meet_link && m?.google_sync_error) {
+    toast.error(`Google Meet link not created: ${m.google_sync_error}`, { duration: 10000 });
+  }
+}
+
 function GoogleMeetToggle({ checked, onChange, existingLink }) {
   const [status, setStatus] = useState(null);
   useEffect(() => {
@@ -619,10 +631,12 @@ function NewMeetingDialog({ employees, rooms, prefill, initial, onCreated }) {
         add_google_meet: form.add_google_meet,
       };
       if (isEdit) {
-        await api.patch(`/meetings/${initial.id}`, payload);
+        const { data } = await api.patch(`/meetings/${initial.id}`, payload);
         toast.success("Meeting updated — participants notified");
+        warnGoogle(data);
       } else {
         const { data } = await api.post("/meetings", payload);
+        warnGoogle(data);
         if (data.approval_status === "pending") {
           toast.success("Meeting submitted — HR will review it shortly.");
         } else {

@@ -207,7 +207,7 @@ async def create_event(meeting: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     try:
         token = await _access_token(meeting["company_id"])
         if not token:
-            return None
+            return {"google_sync_error": "Google account is not connected or its access expired — reconnect in Settings."}
         body = await _event_body(meeting)
         body["conferenceData"] = {"createRequest": {
             "requestId": str(uuid.uuid4()),
@@ -218,12 +218,17 @@ async def create_event(meeting: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                              json=body, headers={"Authorization": f"Bearer {token}"})
         if r.status_code >= 300:
             logger.error(f"google create_event failed {r.status_code}: {r.text}")
-            return None
+            try:
+                msg = r.json().get("error", {}).get("message", "")
+            except Exception:
+                msg = r.text
+            return {"google_sync_error": f"Google rejected the request ({r.status_code}): {msg[:300]}"}
         ev = r.json()
-        return {"google_event_id": ev["id"], "meet_link": _extract_meet(ev), "google_event_link": ev.get("htmlLink")}
+        return {"google_event_id": ev["id"], "meet_link": _extract_meet(ev),
+                "google_event_link": ev.get("htmlLink"), "google_sync_error": None}
     except Exception as e:
         logger.error(f"google create_event exception: {e}")
-        return None
+        return {"google_sync_error": f"Could not reach Google: {e}"}
 
 
 async def update_event(meeting: Dict[str, Any]) -> bool:
