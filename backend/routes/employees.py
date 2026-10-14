@@ -29,6 +29,7 @@ class EmployeeCreate(BaseModel):
 
 class EmployeeUpdate(BaseModel):
     name: Optional[str] = None
+    email: Optional[EmailStr] = None
     department: Optional[str] = None
     designation: Optional[str] = None
     location: Optional[str] = None
@@ -316,6 +317,17 @@ async def update_employee(employee_id: str, body: EmployeeUpdate, admin: dict = 
             "role_changed_by": admin.get("id"),
             "role_changed_at": datetime.now(timezone.utc).isoformat(),
         }})
+
+    new_email = update.pop("email", None)
+    if new_email is not None:
+        new_email = new_email.lower()
+        if new_email != (emp.get("email") or "").lower():
+            if admin.get("role") not in ("super_admin", "hr"):
+                raise HTTPException(status_code=403, detail="Only Super Admin or HR can change the work email")
+            if await db.users.find_one({"email": new_email, "id": {"$ne": emp["user_id"]}}):
+                raise HTTPException(status_code=409, detail="This email is already used by another account")
+            await db.users.update_one({"id": emp["user_id"]}, {"$set": {"email": new_email}})
+            update["email"] = new_email
 
     if update:
         await db.employees.update_one({"id": employee_id}, {"$set": update})

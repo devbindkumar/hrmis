@@ -174,6 +174,7 @@ export default function Employees() {
 function EditEmployeeDialog({ employee, departments, canChangeRole, canResetPassword, onSaved }) {
   const [form, setForm] = useState({
     name: employee.name || "",
+    email: employee.email || "",
     department: employee.department || "",
     designation: employee.designation || "",
     location: employee.location || "",
@@ -198,6 +199,9 @@ function EditEmployeeDialog({ employee, departments, canChangeRole, canResetPass
     if (!form.name || !form.department || !form.designation) {
       toast.error("Name, department and designation are required"); return;
     }
+    if (canChangeRole && !/^\S+@\S+\.\S+$/.test(form.email.trim())) {
+      toast.error("Enter a valid work email"); return;
+    }
     if (roleChanged && !confirmRole) {
       toast.error("Please confirm the role change before saving"); return;
     }
@@ -214,6 +218,9 @@ function EditEmployeeDialog({ employee, departments, canChangeRole, canResetPass
         status: form.status,
       };
       if (canChangeRole) payload.role = form.role;
+      if (canChangeRole && form.email.trim().toLowerCase() !== (employee.email || "").toLowerCase()) {
+        payload.email = form.email.trim();
+      }
       if (form.shift_start_time) payload.shift_start_time = form.shift_start_time;
       if (form.late_grace_minutes !== "" && form.late_grace_minutes !== null) {
         payload.late_grace_minutes = Number(form.late_grace_minutes);
@@ -235,6 +242,20 @@ function EditEmployeeDialog({ employee, departments, canChangeRole, canResetPass
         <div className="col-span-2">
           <Label>Full name</Label>
           <Input value={form.name} onChange={(e)=>setForm({...form, name: e.target.value})} className="mt-1.5" data-testid="ee-name" />
+        </div>
+        <div className="col-span-2">
+          <Label>Work email</Label>
+          <Input
+            type="email"
+            value={form.email}
+            onChange={(e)=>setForm({...form, email: e.target.value})}
+            disabled={!canChangeRole}
+            className="mt-1.5"
+            data-testid="ee-email"
+          />
+          <p className="text-[11px] text-slate-500 mt-1">
+            {canChangeRole ? "This is also the employee's login email — they'll sign in with the new address." : "Only Super Admin or HR can change the work email."}
+          </p>
         </div>
         <div>
           <Label>Department</Label>
