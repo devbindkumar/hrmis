@@ -182,3 +182,4 @@ See `/app/memory/test_credentials.md`.
 - Backlog: include Meet link in WhatsApp meeting templates; alert super admin if Google token refresh fails.
 - 2026-06: Super Admin can save Google Client ID/Secret per company in Settings (`google_app_credentials` collection, PUT/DELETE /api/google/credentials, secret masked ••••last4); env keys remain fallback. Changing Client ID drops existing connection.
 - 2026-06: Edit Employee dialog has Work email field (Super Admin/HR only); PATCH /api/employees/{id} email updates employees + users (login), lowercase, 409 on duplicate, 403 for managers.
+- 2026-06: WhatsApp meeting templates now carry the Meet join link: hrmis_meeting_scheduled {{6}} and hrmis_meeting_updated {{7}} ("Join Google Meet: ..."; fallback "In-person / no video link"). User must re-submit both templates for approval in AzMarq/Meta.

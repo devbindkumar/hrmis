@@ -123,6 +123,7 @@ async def _notify_and_email(db, doc: dict, organiser: dict, *, subject_prefix: s
         ends_at=doc["ends_at"],
         location=doc.get("room_name") or doc.get("location") or "Online",
         attendee_user_ids=doc.get("attendee_user_ids", []),
+        meet_link=doc.get("meet_link"),
     )
 
 
@@ -562,6 +563,7 @@ async def update_meeting(
                 ends_at=merged.get("ends_at"),
                 attendee_user_ids=kept,
                 change_summary=change_summary,
+                meet_link=merged.get("meet_link"),
             )
 
     merged.pop("_id", None)

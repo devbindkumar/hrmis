@@ -109,9 +109,9 @@ class TestTemplatesEndpoint:
         assert "meeting_updated" in by_key
         tu = by_key["meeting_updated"]
         assert tu["name"] == "hrmis_meeting_updated"
-        assert len(tu["variables"]) == 6
+        assert len(tu["variables"]) == 7
         assert "{{6}}" in tu["body"]
-        assert len(tu["example"]["body_text"][0]) == 6
+        assert len(tu["example"]["body_text"][0]) == 7
 
         assert "meeting_cancelled" in by_key
         tc = by_key["meeting_cancelled"]
@@ -136,7 +136,7 @@ class TestWhatsAppTestSend:
         assert rows, "expected an outbox row for hrmis_meeting_updated"
         latest = rows[0]
         params = latest.get("params") or []
-        assert len(params) == 6, f"expected 6 params, got {len(params)}: {params}"
+        assert len(params) == 7, f"expected 7 params, got {len(params)}: {params}"
         assert all(bool(str(p).strip()) for p in params), f"empty param present: {params}"
 
     def test_test_send_meeting_cancelled_logs_5_params(self, admin_headers):
@@ -214,7 +214,7 @@ class TestMeetingPatchSmartRouting:
         assert kept_rows, "expected hrmis_meeting_updated outbox row for retained attendee maya"
         kept = kept_rows[0]
         kparams = kept["params"]
-        assert len(kparams) == 6, f"retained params: {kparams}"
+        assert len(kparams) == 7, f"retained params: {kparams}"
         assert all(str(p).strip() for p in kparams), f"empty param in retained: {kparams}"
         # 6th param = change summary — must mention something that actually changed
         change_summary = str(kparams[5]).lower()
@@ -237,7 +237,7 @@ class TestMeetingPatchSmartRouting:
         added_lena = [r for r in added_rows if "4155551006" in (r.get("to") or "").replace(" ", "").replace("(", "").replace(")", "").replace("-", "")]
         assert added_lena, f"expected hrmis_meeting_scheduled outbox row for added attendee lena. Rows seen: {[r.get('to') for r in added_rows]}"
         aparams = added_lena[0]["params"]
-        assert len(aparams) == 5, f"added params: {aparams}"
+        assert len(aparams) == 6, f"added params: {aparams}"
         assert all(str(p).strip() for p in aparams), f"empty param in added: {aparams}"
 
         # in-app notifications check

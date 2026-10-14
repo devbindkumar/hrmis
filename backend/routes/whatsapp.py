@@ -145,12 +145,14 @@ async def template_specs(_: dict = Depends(require_roles("super_admin"))):
                 "key": "meeting_scheduled",
                 "name": DEFAULT_TEMPLATES["meeting_scheduled"],
                 "body": (
-                    "Hi {{1}}, {{2}} has scheduled a meeting *{{3}}* on {{4}} at {{5}}.\n\n"
+                    "Hi {{1}}, {{2}} has scheduled a meeting *{{3}}* on {{4}} at {{5}}.\n"
+                    "Join Google Meet: {{6}}\n\n"
                     "Login to HRMIS to view details."
                 ),
-                "variables": ["Attendee name", "Organizer name", "Meeting title", "Date", "Time / Location"],
+                "variables": ["Attendee name", "Organizer name", "Meeting title", "Date", "Time range", "Join link"],
                 "example": {
-                    "body_text": [["Maya Chen", "Alex Carter", "Sprint Planning", "2026-02-14", "10:30"]]
+                    "body_text": [["Maya Chen", "Alex Carter", "Sprint Planning", "01 Jul 2026 (Wed)",
+                                   "04:00 pm → 04:30 pm IST", "https://meet.google.com/abc-defg-hij"]]
                 },
             },
             {
@@ -158,12 +160,14 @@ async def template_specs(_: dict = Depends(require_roles("super_admin"))):
                 "name": DEFAULT_TEMPLATES["meeting_updated"],
                 "body": (
                     "Hi {{1}}, {{2}} has updated the meeting *{{3}}*. New schedule: {{4}} at {{5}}.\n"
-                    "Changes: {{6}}.\n\nLogin to HRMIS to view details."
+                    "Changes: {{6}}.\n"
+                    "Join Google Meet: {{7}}\n\nLogin to HRMIS to view details."
                 ),
-                "variables": ["Attendee name", "Organizer name", "Meeting title", "Date", "Time range", "Changes"],
+                "variables": ["Attendee name", "Organizer name", "Meeting title", "Date", "Time range", "Changes", "Join link"],
                 "example": {
                     "body_text": [["Maya Chen", "Alex Carter", "Sprint Planning", "01 Jul 2026 (Wed)",
-                                   "04:00 pm → 04:30 pm IST", "start → 01 Jul 16:00"]]
+                                   "04:00 pm → 04:30 pm IST", "start → 01 Jul 16:00",
+                                   "https://meet.google.com/abc-defg-hij"]]
                 },
             },
             {
@@ -204,10 +208,11 @@ def _sample_params_for(key: str, manager_name: str) -> List[str]:
     if key == "wfh_request":
         return [manager_name, "Test Employee", "2026-02-14", "Test reason"]
     if key == "meeting_scheduled":
-        return ["Test Employee", manager_name, "HRMIS Test Meeting", "2026-02-14", "10:30"]
+        return ["Test Employee", manager_name, "HRMIS Test Meeting", "01 Jul 2026 (Wed)",
+                "04:00 pm → 04:30 pm IST", "https://meet.google.com/abc-defg-hij"]
     if key == "meeting_updated":
         return ["Test Employee", manager_name, "HRMIS Test Meeting", "01 Jul 2026 (Wed)",
-                "04:00 pm → 04:30 pm IST", "start → 01 Jul 16:00"]
+                "04:00 pm → 04:30 pm IST", "start → 01 Jul 16:00", "https://meet.google.com/abc-defg-hij"]
     if key == "meeting_cancelled":
         return ["Test Employee", "HRMIS Test Meeting", "01 Jul 2026 (Wed)",
                 "04:00 pm → 04:30 pm IST", manager_name]

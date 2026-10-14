@@ -42,6 +42,7 @@ STATUS_LABELS = {
 # Admins can override via the `timezone` field on whatsapp_configs (any IANA
 # zone name, e.g. "America/New_York", "Europe/London").
 DEFAULT_TZ = "Asia/Kolkata"
+NO_MEET_LINK = "In-person / no video link"
 TZ_ABBRS = {
     "Asia/Kolkata": "IST",
     "Asia/Calcutta": "IST",
@@ -237,6 +238,7 @@ async def notify_meeting_scheduled(
     *, company_id: str, organizer_name: str, title: str,
     starts_at: str, location: str, attendee_user_ids: List[str],
     ends_at: Optional[str] = None,
+    meet_link: Optional[str] = None,
 ) -> None:
     """Notify every attendee. Sends per-attendee (only those with phone).
 
@@ -271,6 +273,7 @@ async def notify_meeting_scheduled(
                 title,
                 date_str,
                 time_range,
+                meet_link or NO_MEET_LINK,
             ]
             await send_template(company_id, phone, tmpl, params)
     except Exception as e:
@@ -319,8 +322,9 @@ async def notify_meeting_updated(
     ends_at: Optional[str],
     attendee_user_ids: List[str],
     change_summary: str = "",
+    meet_link: Optional[str] = None,
 ) -> None:
-    # Vars: attendee, organizer, title, date, time, changes
+    # Vars: attendee, organizer, title, date, time, changes, join link
     await _notify_meeting_change(
         event_key="meeting_updated",
         company_id=company_id,
@@ -330,6 +334,7 @@ async def notify_meeting_updated(
         build_params=lambda name, d, t: [
             name, organizer_name or "Organizer", title or "Meeting", d, t,
             (change_summary or "details updated")[:200],
+            meet_link or NO_MEET_LINK,
         ],
     )
 
