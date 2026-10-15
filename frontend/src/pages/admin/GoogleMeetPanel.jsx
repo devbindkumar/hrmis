@@ -159,9 +159,13 @@ export default function GoogleMeetPanel() {
         )}
       </div>
 
-      {status.redirect_uri && !status.connected && (
+      {status.redirect_uri && (
         <div className="mt-3 text-xs text-slate-600">
-          Authorized redirect URI to add in Google Cloud:
+          <div className="mb-2">
+            Authorized JavaScript origin:{" "}
+            <code className="bg-slate-50 border border-slate-200 rounded px-2 py-0.5 break-all" data-testid="google-js-origin">{new URL(status.redirect_uri).origin}</code>
+          </div>
+          Authorized redirect URI to add in Google Cloud (for this domain):
           <div className="mt-1 flex items-center gap-2">
             <code className="bg-slate-50 border border-slate-200 rounded px-2 py-1 break-all" data-testid="google-redirect-uri">{status.redirect_uri}</code>
             <button

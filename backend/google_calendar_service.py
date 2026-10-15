@@ -23,8 +23,13 @@ EVENTS_URI = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
 SCOPES = ["openid", "https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/calendar"]
 
 
-def redirect_uri() -> str:
-    return os.environ.get("GOOGLE_REDIRECT_URI", "")
+def redirect_uri_from_headers(headers, fallback_host: str) -> str:
+    """Callback URL for whichever domain the app is served on (preview, prod, custom)."""
+    host = (headers.get("x-forwarded-host") or headers.get("host") or fallback_host).split(",")[0].strip()
+    proto = (headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+    if not proto:
+        proto = "http" if host.startswith(("localhost", "127.0.0.1")) else "https"
+    return f"{proto}://{host}/api/google/oauth/callback"
 
 
 async def _app_creds(company_id: str) -> Dict[str, str]:
@@ -38,7 +43,7 @@ async def _app_creds(company_id: str) -> Dict[str, str]:
 
 async def is_configured(company_id: str) -> bool:
     c = await _app_creds(company_id)
-    return bool(c["client_id"] and c["client_secret"] and redirect_uri())
+    return bool(c["client_id"] and c["client_secret"])
 
 
 async def save_app_creds(company_id: str, client_id: str, client_secret: Optional[str]) -> None:
@@ -60,15 +65,15 @@ async def clear_app_creds(company_id: str) -> None:
     await db.google_integrations.delete_one({"company_id": company_id})
 
 
-async def build_auth_url(company_id: str, user_id: str) -> str:
+async def build_auth_url(company_id: str, user_id: str, redirect_uri: str) -> str:
     creds = await _app_creds(company_id)
     state = jwt.encode(
-        {"cid": company_id, "uid": user_id, "exp": datetime.now(timezone.utc) + timedelta(minutes=10)},
+        {"cid": company_id, "uid": user_id, "ru": redirect_uri, "exp": datetime.now(timezone.utc) + timedelta(minutes=10)},
         os.environ["JWT_SECRET"], algorithm="HS256",
     )
     return AUTH_URI + "?" + urlencode({
         "client_id": creds["client_id"],
-        "redirect_uri": redirect_uri(),
+        "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": " ".join(SCOPES),
         "access_type": "offline",
@@ -82,12 +87,12 @@ def decode_state(state: str) -> Dict[str, Any]:
     return jwt.decode(state, os.environ["JWT_SECRET"], algorithms=["HS256"])
 
 
-async def exchange_code(company_id: str, user_id: str, code: str) -> str:
+async def exchange_code(company_id: str, user_id: str, code: str, redirect_uri: str) -> str:
     creds = await _app_creds(company_id)
     async with httpx.AsyncClient(timeout=20) as c:
         tok = (await c.post(TOKEN_URI, data={
             "code": code, "client_id": creds["client_id"], "client_secret": creds["client_secret"],
-            "redirect_uri": redirect_uri(), "grant_type": "authorization_code",
+            "redirect_uri": redirect_uri, "grant_type": "authorization_code",
         })).json()
         if "access_token" not in tok:
             raise ValueError(tok.get("error_description") or tok.get("error") or "Token exchange failed")
@@ -109,7 +114,7 @@ async def exchange_code(company_id: str, user_id: str, code: str) -> str:
     return email
 
 
-async def get_status(company_id: str) -> Dict[str, Any]:
+async def get_status(company_id: str, redirect_uri: str = "") -> Dict[str, Any]:
     doc = await get_db().google_integrations.find_one({"company_id": company_id}, {"_id": 0, "email": 1, "connected_at": 1})
     creds = await _app_creds(company_id)
     configured = await is_configured(company_id)
@@ -122,7 +127,7 @@ async def get_status(company_id: str) -> Dict[str, Any]:
         "client_secret_masked": ("••••" + sec[-4:]) if creds["source"] == "settings" and sec else "",
         "email": (doc or {}).get("email"),
         "connected_at": (doc or {}).get("connected_at"),
-        "redirect_uri": redirect_uri(),
+        "redirect_uri": redirect_uri,
     }
 
 
