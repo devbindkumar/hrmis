@@ -184,3 +184,4 @@ See `/app/memory/test_credentials.md`.
 - 2026-06: Edit Employee dialog has Work email field (Super Admin/HR only); PATCH /api/employees/{id} email updates employees + users (login), lowercase, 409 on duplicate, 403 for managers.
 - 2026-06: WhatsApp meeting templates now carry the Meet join link: hrmis_meeting_scheduled {{6}} and hrmis_meeting_updated {{7}} ("Join Google Meet: ..."; fallback "In-person / no video link"). User must re-submit both templates for approval in AzMarq/Meta.
 - 2026-06: Google create failures now stored as meetings.google_sync_error, shown as toast + red note on card (edit & save retries). Root cause of user report: Calendar API disabled in GCP project 883011282219; WA 132001 = templates not approved in WABA with new bodies.
+- 2026-06: HRMS organiser (created_by) now added as a guest on the Google Calendar event so they also receive Google invite/update/cancel emails (event owned by connected company account, e.g. info@).

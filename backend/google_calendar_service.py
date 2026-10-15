@@ -174,6 +174,14 @@ async def _attendee_emails(company_id: str, user_ids: List[str]) -> List[Dict[st
     return [{"email": u["email"], "displayName": u.get("name", "")} for u in users if u.get("email")]
 
 
+def _guest_ids(meeting: Dict[str, Any]) -> List[str]:
+    # HRMS organiser is a guest too — the Google event is owned by the connected company account
+    ids = list(meeting.get("attendee_user_ids") or [])
+    if meeting.get("created_by") and meeting["created_by"] not in ids:
+        ids.insert(0, meeting["created_by"])
+    return ids
+
+
 async def _event_body(meeting: Dict[str, Any]) -> Dict[str, Any]:
     tz = await _tenant_tz(meeting["company_id"])
     start = _parse_meeting_dt(meeting["starts_at"], tz)
@@ -189,7 +197,7 @@ async def _event_body(meeting: Dict[str, Any]) -> Dict[str, Any]:
         "location": location or "",
         "start": {"dateTime": start.isoformat(), "timeZone": tz},
         "end": {"dateTime": end.isoformat(), "timeZone": tz},
-        "attendees": await _attendee_emails(meeting["company_id"], meeting.get("attendee_user_ids") or []),
+        "attendees": await _attendee_emails(meeting["company_id"], _guest_ids(meeting)),
     }
 
 
