@@ -242,6 +242,7 @@ function MeetingDescription({ text }) {
 
 function MeetingCard({ m, canCancel, onCancel, onEdit, past, employees }) {
   const [expanded, setExpanded] = useState(false);
+  const { user: me } = useAuth();
   const start = new Date(m.starts_at);
   const end = new Date(m.ends_at);
   const attendees = employees.filter((e) => m.attendee_user_ids?.includes(e.user_id));
@@ -264,6 +265,14 @@ function MeetingCard({ m, canCancel, onCancel, onEdit, past, employees }) {
             {start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} → {end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             {typeof m.duration_minutes === "number" && <> · {m.duration_minutes}m</>}
           </div>
+          {m.created_by_name && (
+            <div className="text-xs text-slate-600 mt-1.5 flex items-center gap-1.5" data-testid={`meeting-organizer-${m.id}`}>
+              <span className="h-5 w-5 rounded-full bg-slate-100 text-slate-700 grid place-items-center text-[10px] font-semibold">
+                {m.created_by_name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()}
+              </span>
+              Organised by <span className="font-medium text-slate-900">{m.created_by_name}{m.created_by === me?.id && " (You)"}</span>
+            </div>
+          )}
           {m.meet_link && m.status !== "cancelled" && (
             <a
               href={m.meet_link}
